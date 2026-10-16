@@ -1,16 +1,46 @@
 import Phaser from 'phaser';
 import { LEVELS } from './levels.js';
-import { createSim, starsFor, DT, CAR_W, CAR_H } from './sim.js';
+import { createSim, starsFor, DT, CAR_W, CAR_H, FAIL_WHY, WARN } from './sim.js';
 import { makeArt, SKIES } from './art.js';
 import { sfx } from './sfx.js';
-import { genLot, dailySeed, UPGRADES, costOf, payout } from './launch.js';
-import { showRewarded, onRunStart, isNative } from './ads.js';
+import { genLot, dailySeed, UPGRADES, costOf, payout, flipMult } from './launch.js';
+import { showRewarded, onRunStart, isNative, adsOn } from './ads.js';
 import { simpleInput as simpleMap } from './controls.js';
 const simpleInput = S => simpleMap(S, zone);
 
 // ---------- save ----------
 const SAVE_KEY = "parkypark_v1";
-const save = Object.assign({ stars: {}, best: {}, slips: 0, coins: 0, up: {}, runs: 0, bestSpot: 0, daily: {} }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'));
+const save = Object.assign({ stars: {}, best: {}, slips: 0, coins: 0, up: {}, runs: 0, bestSpot: 0, daily: {}, bestDist: 0, streak: 0, bestStreak: 0,
+  stats: { parks: 0, steals: 0, triple: 0, dailies: 0 }, skin: 'white' }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'));
+if (save.econ !== 2) { // v2 economy: old saves were inflated by the flip exploit; keep upgrades, trim coins
+  save.coins = Math.min(save.coins, 150); save.econ = 2; }
+for (const u of UPGRADES) if ((save.up[u.k] || 0) > u.max) save.up[u.k] = u.max;
+
+// ---------- car skins (unlocked by milestones) ----------
+const SKINS = [
+  { k: 'white', name: 'Showroom', tint: 0xffffff, req: 'Default', ok: () => true },
+  { k: 'midnight', name: 'Midnight', tint: 0x7b8cff, req: 'Park 5 times', ok: () => save.stats.parks >= 5 },
+  { k: 'flame', name: 'Hot Rod', tint: 0xff7a4a, req: 'Land a triple flip', ok: () => save.stats.triple >= 1 },
+  { k: 'mint', name: 'Mint', tint: 0x8affc8, req: 'Steal 3 spots', ok: () => save.stats.steals >= 3 },
+  { k: 'gold', name: 'Gold', tint: 0xffd23f, req: 'Park in spot #5', ok: () => save.bestSpot >= 5 },
+  { k: 'neon', name: 'Neon', tint: 0xff5ad8, req: '5-park streak', ok: () => save.bestStreak >= 5 },
+  { k: 'stealth', name: 'Stealth', tint: 0x6a6f7c, req: 'Park in spot #10', ok: () => save.bestSpot >= 10 },
+];
+const skinTint = () => (SKINS.find(k => k.k === save.skin && k.ok()) || SKINS[0]).tint;
+const unlockedSkins = () => SKINS.filter(k => k.ok()).map(k => k.k);
+// ---------- quick-win challenge (one per run, small reward, usually achievable) ----------
+function pickQuest() {
+  const d = Math.max(10, Math.round((save.bestDist || 12) * 0.75 / 5) * 5);
+  const Q = [
+    { txt: `Fly ${d}m`, pay: 8, test: (S, p) => p.dist >= d },
+    { txt: 'Land a flip', pay: 10, test: S => S.cleanFlips >= 1 },
+    { txt: 'Park anywhere', pay: 8, test: S => S.parked },
+    { txt: 'Park with no dings', pay: 12, test: S => S.parked && !S.bumps },
+    ...(save.stats.parks >= 3 ? [{ txt: 'Land 2 flips', pay: 15, test: S => S.cleanFlips >= 2 }, { txt: 'Park and flip', pay: 15, test: S => S.parked && S.cleanFlips >= 1 }] : []),
+    ...(save.bestSpot >= 2 ? [{ txt: `Park in spot #${save.bestSpot}+`, pay: 15, test: S => S.parked && S.parkedSpot + 1 >= save.bestSpot }] : []),
+  ];
+  return Q[Math.floor(Math.random() * Q.length)];
+}
 const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 const ghostKey = id => 'parkypark_ghost_' + id;
 
@@ -38,7 +68,7 @@ let hud, overlay, menuEl, touchEl, shopEl, zonesEl, tutEl;
 const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || location.search.includes('touch');
 const zone = { l: false, r: false };
 function buildZones() {
-  zonesEl = h(`<div class="zones"><div class="zl"><span>◀ BRAKE · FLIP</span></div><div class="zr"><span>GO · BOOST · THRUST ▶</span></div></div>`);
+  zonesEl = h(`<div class="zones"><div class="zl"><span><b>HOLD</b>◀ brake · flip</span></div><div class="zr"><span><b>HOLD</b>go · boost · fly ▶</span></div></div>`);
   const [zl, zr] = zonesEl.children, ptr = new Map();
   const upd = () => { zone.l = [...ptr.values()].includes('l'); zone.r = [...ptr.values()].includes('r'); zl.classList.toggle('held', zone.l); zr.classList.toggle('held', zone.r); };
   const side = e => (e.clientX < innerWidth / 2 ? 'l' : 'r');
@@ -50,14 +80,19 @@ function buildZones() {
 }
 function setZones(on, btns = !on) { zonesEl?.classList.toggle('on', on && TOUCH); touchEl?.classList.toggle('on', btns && TOUCH); if (!on) { zone.l = zone.r = false; } }
 function showTutorial(done) {
-  const steps = [['Hold RIGHT', 'Hold the right side to race down the ramp and BOOST. In the air it fires your thrusters.', '▶'],
-    ['Hold LEFT', 'In the air, hold the left side to FLIP (flips = coins!). On the ground it brakes. Both sides = hop / hover.', '⟲'],
-    ['Steal the spot', 'Land in a parking spot and stop. Farther spots pay more. Get there before the rivals!', '🅿️']];
+  const steps = TOUCH ? [['Hold RIGHT', 'Hold the right side to race down the ramp. Keep holding in the air to fly (thrusters).', '▶'],
+    ['Hold LEFT', 'In the air, hold the left side to FLIP. Flips multiply your pay, but only if you park! On the ground it brakes. Both sides = hop.', '⟲'],
+    ['Steal the spot', 'Let go to drop into a spot, then stop. Farther spots pay more. Beat the rivals!', '🅿️']]
+    : [['Hold ▶ (or D)', 'Hold ▶ to race down the ramp. SHIFT boosts. Keep holding ▶ in the air to fly: it fires the thrusters.', '▶'],
+    ['Q / E to flip', 'Flip in the air with Q / E. Each clean flip adds +25% to your pay, but only if you park! ◀ brakes, ↓ hops.', '⟲'],
+    ['Steal the spot', 'Let go to drop into a spot, then stop. Farther spots pay more. Beat the rivals! R = retry.', '🅿️']];
   let k = 0;
   const draw = () => { tutEl.innerHTML = `<div class="card"><div style="font-size:48px">${steps[k][2]}</div><h3>${steps[k][0]}</h3><div>${steps[k][1]}</div>
-    <div class="dots">${steps.map((_, j) => j === k ? '<b>●</b>' : '●').join('')}</div><div style="margin-top:8px;font-size:13px;opacity:.7">tap to continue</div></div>`; };
+    <div class="dots">${steps.map((_, j) => j === k ? '<b>●</b>' : '●').join('')}</div><div style="margin-top:8px;font-size:13px;opacity:.7">${TOUCH ? 'tap' : 'click or press any key'} to continue</div></div>`; };
   tutEl = h('<div class="tut p"></div>'); draw(); ui.appendChild(tutEl);
-  tutEl.addEventListener('pointerdown', e => { e.preventDefault(); k++; if (k >= steps.length) { tutEl.remove(); tutEl = null; save.tut = 1; persist(); done(); } else draw(); });
+  const adv = e => { e.preventDefault(); e.stopPropagation(); k++; if (k >= steps.length) { tutEl.remove(); tutEl = null; removeEventListener('keydown', key, true); save.tut = 1; persist(); done(); } else draw(); };
+  const key = e => { if (tutEl && !e.repeat) adv(e); };
+  tutEl.addEventListener('pointerdown', adv); addEventListener('keydown', key, true);
 }
 function goFullscreen() {
   if (isNative() || !TOUCH || document.fullscreenElement) return;
@@ -93,7 +128,7 @@ function showMenu() {
       return `<div class="lv ${locked ? 'locked' : ''}" data-id="${L.id}"><div class="n">${L.id}</div><div class="nm">${L.name}</div>
         <div class="s">${starStr(save.stars[L.id] || 0)}</div><div class="bt">${save.best[L.id] ? 'best ' + fmt(save.best[L.id]) : 'par ' + L.par[1] + 's'}</div></div>`;
     }).join('')}</div>
-    <div class="keys">◀ ▶ drive / air-steer &nbsp; SHIFT / B boost &nbsp; ▲ / W / SPACE thrusters &nbsp; S / ↓ hop &nbsp; Q / E spin &amp; flip<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
+    <div class="keys">${TOUCH ? 'Hold RIGHT to go &amp; fly · hold LEFT to brake / flip · both = hop<br>' : ''}▶ drive (hold in the air to fly) &nbsp; ◀ brake &nbsp; SHIFT boost &nbsp; ▲ / SPACE thrust &nbsp; ↓ hop &nbsp; Q / E flip<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
   menuEl.querySelectorAll('.lv').forEach(el => el.addEventListener('click', () => { sfx.click(); startLevel(+el.dataset.id); }));
   menuEl.querySelector('[data-a=launch]').onclick = () => { sfx.click(); startLaunch(); };
   menuEl.querySelector('[data-a=daily]').onclick = () => { sfx.click(); startLaunch(true); };
@@ -114,14 +149,18 @@ function openShop(after) {
   const sc = game.scene.getScene('play'); if (sc) sc.paused = true;
   const draw = () => {
     shopEl.innerHTML = `<h2>🛠 PIT SHOP <span class="coins">🪙 ${save.coins}</span></h2><div class="ups">${UPGRADES.map(u => {
-      const l = save.up[u.k] || 0, c = costOf(u, l), maxed = l >= u.max;
+      const l = save.up[u.k] || 0, c = costOf(u, l), maxed = l >= u.max, a = u.stat(l), b = maxed ? null : u.stat(l + 1);
       return `<div class="up"><b>${u.name}</b><div class="pips">${'■'.repeat(l)}<i>${'■'.repeat(u.max - l)}</i></div><small>${u.desc}</small>
+        <div class="stat">${a.label}: <b>${a.v}</b>${b ? ` → <b class="nx">${b.v}</b>` : ''}</div>
         <button data-k="${u.k}" ${maxed || save.coins < c ? 'disabled' : ''}>${maxed ? 'MAX' : '🪙 ' + c}</button></div>`; }).join('')}</div>
+      <div class="garage"><b>GARAGE</b>${SKINS.map(k => `<button class="sk ${save.skin === k.k ? 'sel' : ''}" data-s="${k.k}" ${k.ok() ? '' : 'disabled'} title="${k.req}">
+        <i style="background:#${k.tint.toString(16).padStart(6, '0')}"></i>${k.ok() ? k.name : '🔒 ' + k.req}</button>`).join('')}</div>
       <div class="btns"><button class="main" data-a="go">▶ Run again (Enter)</button><button data-a="menu">Menu</button></div>`;
     shopEl.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
       const u = UPGRADES.find(x => x.k === b.dataset.k), l = save.up[u.k] || 0, c = costOf(u, l);
-      if (save.coins >= c && l < u.max) { save.coins -= c; save.up[u.k] = l + 1; persist(); sfx.park(2); draw(); }
+      if (save.coins >= c && l < u.max) { save.coins -= c; save.up[u.k] = l + 1; persist(); sfx.buy(); draw(); }
     });
+    shopEl.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { save.skin = b.dataset.s; persist(); sfx.click(); draw(); });
     shopEl.querySelector('[data-a=go]').onclick = () => startLaunch(after?.daily);
     shopEl.querySelector('[data-a=menu]').onclick = () => { closeShop(); showMenu(); };
   };
@@ -145,9 +184,9 @@ class Play extends Phaser.Scene {
     // sky
     const sky = this.add.graphics().setScrollFactor(0).setDepth(-10);
     for (let i = 0; i < 16; i++) { sky.fillStyle(Phaser.Display.Color.Interpolate.ColorWithColor(
-      Phaser.Display.Color.HexStringToColor(top), Phaser.Display.Color.HexStringToColor(bot), 15, i).color, 1); sky.fillRect(-900, -620 + i * 110, 2760, 112); }
-    this.add.tileSprite(-600, 0, 3200, 180, 'city0').setOrigin(0, 0).setTileScale(2).setScrollFactor(0.15, 0).setDepth(-9).setY(560 - 180 - 60).setAlpha(0.6);
-    this.add.tileSprite(0, 0, L.w + 400, 180, 'city1').setOrigin(0, 0).setTileScale(2).setScrollFactor(0.35, 0.6).setDepth(-8).setPosition(-100, L.h - 330);
+      Phaser.Display.Color.HexStringToColor(top), Phaser.Display.Color.HexStringToColor(bot), 15, i).color, 1); sky.fillRect(-3000, -1400 + i * 160, 7000, 162); }
+    this.add.tileSprite(-1500, 0, 4000, 180, 'city0').setOrigin(0, 0).setTileScale(2).setScrollFactor(0.15, 0).setDepth(-9).setY(560 - 180 - 60).setAlpha(0.6);
+    this.city1 = this.add.tileSprite(-1500, 0, 4000, 180, 'city1').setOrigin(0, 0).setTileScale(2).setScrollFactor(0, 0.6).setDepth(-8).setY(L.h - 330); // fixed width (huge tile sprites overflow GL max texture size)
     // solids
     for (const s of L.solids) this.drawSolid(s);
     if (L.ramp) for (const poly of L.ramp) {
@@ -175,22 +214,30 @@ class Play extends Phaser.Scene {
       for (let y = 0; y < r[3]; y += 12) { this.gateGfx.fillStyle((y / 12) % 2 ? 0xffffff : 0xe23b3b); this.gateGfx.fillRect(r[0], r[1] + y, r[2], 12); }
       this.gateTxt = this.add.text(r[0] + r[2] / 2, r[1] - 16, 'FLIP TO OPEN', { font: 'bold 13px monospace', color: '#ffd23f', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5); }
     this.spotG = this.add.graphics().setDepth(1);
+    if (this.isLaunch && save.bestDist > 0) { // flag at your previous best distance
+      const fx = L.lipX + save.bestDist * 60, fy = 620, f = this.add.graphics().setDepth(2);
+      f.fillStyle(0xffffff, 1); f.fillRect(fx - 2, fy - 150, 4, 150); f.fillStyle(0xff7a1a, 1); f.fillTriangle(fx + 2, fy - 150, fx + 2, fy - 118, fx + 46, fy - 134);
+      this.add.text(fx + 6, fy - 176, 'BEST ' + save.bestDist + 'm', { font: 'bold 20px monospace', color: '#ffffff', stroke: '#000', strokeThickness: 5 }).setDepth(2);
+      this.bestFlagX = fx; }
+    this.quest = this.isLaunch ? pickQuest() : null; this.gotBestDist = false;
     // ghost
     this.ghostData = this.isLaunch ? null : JSON.parse(localStorage.getItem(ghostKey(L.id)) || 'null');
     this.ghost = this.add.image(0, 0, 'car').setScale(2).setAlpha(0.35).setTintFill(0x9fd8ff).setVisible(!!this.ghostData).setDepth(4);
     // car
-    this.carImg = this.add.image(L.start.x, L.start.y, 'car').setScale(2).setDepth(5);
+    this.carImg = this.add.image(L.start.x, L.start.y, 'car').setScale(2).setDepth(5).setTint(this.isLaunch ? skinTint() : 0xffffff);
     // particles
     this.flameAngle = 90;
     this.flame = this.add.particles(0, 0, 'puff', { angle: { onEmit: () => this.flameAngle + Phaser.Math.Between(-14, 14) }, lifespan: { min: 220, max: 420 }, speed: { min: 60, max: 160 }, scale: { start: 1.4, end: 0.2 },
       alpha: { start: 1, end: 0 }, tint: [0xfff3a0, 0xffa23f, 0xff5a3c, 0xcccccc], emitting: false }).setDepth(4);
     this.sparks = this.add.particles(0, 0, 'spark', { lifespan: 900, speed: { min: 120, max: 420 }, gravityY: 600, scale: { start: 2, end: 0.5 },
       tint: [0xffd23f, 0x3ddc84, 0xffffff, 0xff7a1a, 0x7fd3ff], emitting: false }).setDepth(6);
+    this.lines = this.add.particles(0, 0, 'spark', { lifespan: 380, speedX: { min: -2600, max: -1800 }, scaleX: { start: 22, end: 12 }, scaleY: 0.8,
+      alpha: { start: 0.8, end: 0 }, tint: 0xffffff, emitting: false }).setDepth(7);
     this.dust = this.add.particles(0, 0, 'puff', { lifespan: 500, speedX: { min: -90, max: 90 }, speedY: { min: -60, max: -10 }, scale: { start: 1.2, end: 0 },
       alpha: { start: 0.7, end: 0 }, tint: 0xd8d2c4, emitting: false }).setDepth(4);
     // camera
     const cam = this.cameras.main;
-    cam.setBounds(0, -200, L.w, L.h + 200);
+    cam.setBounds(0, -1400, L.w, L.h + 1400); // tall: high flights stay on screen
     cam.setZoom(this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1));
     if (this.isLaunch) cam.setFollowOffset(-180, 40);
     cam.startFollow(this.carImg, true, 0.12, 0.12);
@@ -200,16 +247,21 @@ class Play extends Phaser.Scene {
     this.lastVy = 0;
     window.__pp.scene = this;
     setZones(this.isLaunch);
+    this.uiScale();
     if (this.isLaunch && !save.tut && !this.replay) { this.paused = true; showTutorial(() => { this.paused = false; }); }
     this.applyZoom = () => { const W = this.scale.width, H = this.scale.height; this.cameras.main.setSize(W, H); const f = W < H ? Math.max((W / 960) * 1.35, H / (L.h + 380) / (this.isLaunch ? 0.62 : 0.8)) : Math.min(W / 960, H / 540);
-      this.cameras.main.setZoom((this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1)) * f); };
+      this.baseZoom = (this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1)) * f; this.cameras.main.setZoom(this.baseZoom); this.uiScale(); };
     this.applyZoom(); this.scale.on('resize', this.applyZoom); this.events.once('shutdown', () => this.scale.off('resize', this.applyZoom));
   }
+  uiScale() { // bold UI that grows with the screen (was tiny at 1080p+)
+    const z = Math.max(1, Math.min(2.4, Math.min(innerWidth / 960, innerHeight / 600) * 1.2)), r = document.documentElement.style;
+    r.setProperty('--z', z.toFixed(3)); r.setProperty('--zp', Math.min(z, 1.7).toFixed(3)); r.setProperty('--zm', Math.max(1, Math.min(z, innerHeight / 720)).toFixed(3)); }
   drawSolid(s) {
     const [x, y, w, hh] = s.r;
     if (s.t === 'ground') {
-      this.add.tileSprite(x, y, w / 2, 8, 'asphalt').setOrigin(0).setScale(2);
-      this.add.tileSprite(x, y + 16, w / 2, (hh - 16) / 2 + 200, 'dirt').setOrigin(0).setScale(2);
+      for (let cx = x; cx < x + w; cx += 2000) { const cw = Math.min(2000, x + w - cx); // chunked: keep each texture well under GL limits
+        this.add.tileSprite(cx, y, cw / 2, 8, 'asphalt').setOrigin(0).setScale(2);
+        this.add.tileSprite(cx, y + 16, cw / 2, (hh - 16) / 2 + 200, 'dirt').setOrigin(0).setScale(2); }
       const g = this.add.graphics(); g.fillStyle(0xffd23f, 0.9);
       for (let i = x + 20; i < x + w; i += 120) g.fillRect(i, y + 8, 40, 3);
     } else if (s.t === 'wall') this.add.tileSprite(x, y, w / 2, hh / 2, 'concrete').setOrigin(0).setScale(2);
@@ -221,16 +273,20 @@ class Play extends Phaser.Scene {
   buildHud() {
     hud?.remove(); overlay?.remove(); overlay = null;
     const L = this.L;
-    hud = h(`<div><div class="hud"><div class="l">${L.mode === 'launch' ? '🚀 ' + L.name : L.id + '. ' + L.name}<small>${L.hint}</small>
-      <div class="fuel"><i></i></div>${L.mode === 'launch' ? '<div class="fuel boost"><i></i></div>' : ''}<div class="style"></div></div>
-      <div style="text-align:right"><div class="timer">0.00</div><div class="pars"><span class="p2">★★ ${L.par[0]}s</span><span class="p3">★★★ ${L.par[1]}s</span></div>
-      <div class="pars"><span>${L.mode === 'launch' ? 'farthest spot: #' + save.bestSpot : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div></div></div>
+    const LA = L.mode === 'launch';
+    hud = h(`<div><div class="hud"><div class="l"><div class="ttl">${LA ? '🚀 ' + L.name : L.id + '. ' + L.name}</div>${LA ? '' : `<small>${L.hint}</small>`}
+      ${LA && this.quest ? `<div class="quest">🎯 ${this.quest.txt} <b>🪙+${this.quest.pay}</b></div>` : ''}
+      <div class="bar"><span>AIR</span><div class="fuel"><i></i></div></div>${LA ? '<div class="bar"><span>BOOST</span><div class="fuel boost"><i></i></div></div>' : ''}<div class="style"></div></div>
+      <div class="r"><div class="timer">${LA ? '0m' : '0.00'}</div><div class="pars"><span class="p2">★★ ${L.par[0]}s</span><span class="p3">★★★ ${L.par[1]}s</span></div>
+      <div class="pars"><span>${LA ? `best spot #${save.bestSpot} · ${save.bestDist}m` : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div>
+      ${LA && save.streak ? `<div class="streak">🔥 ${save.streak} park streak · +${Math.min(5, save.streak) * 10}%</div>` : ''}</div></div>
+      <div class="warn"></div>
       <div class="topbtns p"><button data-a="r">↻ R</button><button data-a="m">☰</button></div></div>`);
     hud.querySelector('[data-a=r]').onclick = () => this.restartLevel();
     hud.querySelector('[data-a=m]').onclick = () => showMenu();
     ui.insertBefore(hud, ui.firstChild);
     this.hTimer = hud.querySelector('.timer'); this.hFuel = hud.querySelector('.fuel i'); this.hBoost = hud.querySelector('.boost i'); this.hStyle = hud.querySelector('.style');
-    this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3');
+    this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3'); this.hWarn = hud.querySelector('.warn');
   }
   restartLevel() { if (menuEl || shopEl) return; if (this.isLaunch) return startLaunch(this.daily); this.scene.restart({ id: this.levelId }); }
   next() {
@@ -250,10 +306,11 @@ class Play extends Phaser.Scene {
       this.acc -= DT; steps++;
       let inp = input;
       if (this.isLaunch && TOUCH && (zone.l || zone.r)) inp = { ...input, ...simpleInput(S) };
+      else if (this.isLaunch && !S.grounded && input.right) inp = { ...input, up: true, boost: true }; // hold ▶ in the air = fly
       if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32), boost: !!(v & 64) }; }
       const vyBefore = S.car.velocity.y, wasG = S.grounded;
       S.step(inp);
-      if (!S.parked && !S.failed) this.ghostRec.push(Math.round(S.car.position.x), Math.round(S.car.position.y), Math.round(S.car.angle * 100));
+      if (!S.parked && !S.failed && S.started) this.ghostRec.push(Math.round(S.car.position.x), Math.round(S.car.position.y), Math.round(S.car.angle * 100));
       this.handleEvents(S, vyBefore, wasG, inp);
     }
     if (S.failed && !this.done) this.onFail();
@@ -285,26 +342,37 @@ class Play extends Phaser.Scene {
       if (e === 'honk') { sfx.honk(); this.toast('HONK HONK'); }
       if (e === 'bump') sfx.bump();
       if (e === 'hop') { sfx.thud(4); this.dust.emitParticleAt(c.position.x, c.position.y + 10, 6); }
-      if (typeof e === 'string' && e.startsWith('flipland:')) { const [, n, amt] = e.split(':'); this.toast(`${['', 'FLIP', 'DOUBLE FLIP', 'TRIPLE FLIP'][n] || 'INSANE x' + n}! 🪙+${amt}`); sfx.park(Math.min(3, +n)); cam.flash(90, 255, 230, 120); }
-      if (typeof e === 'string' && e.startsWith('bail')) { this.toast(`SLOPPY LANDING! 🪙+${e.split(':')[1] || 0}`); sfx.bump(); }
+      if (typeof e === 'string' && e.startsWith('flipland:')) { const n = +e.split(':')[1]; if (n >= 3) { save.stats.triple++; persist(); }
+        this.toast(`${['', 'FLIP', 'DOUBLE FLIP', 'TRIPLE FLIP'][n] || 'INSANE x' + n}! PAY ×${flipMult(S).toFixed(2)} IF YOU PARK`); sfx.park(Math.min(3, n)); cam.flash(90, 255, 230, 120); }
+      if (typeof e === 'string' && e.startsWith('bail')) { this.toast(`SLOPPY LANDING! ×${flipMult(S).toFixed(2)}`); sfx.bump(); }
+      if (e === 'unstick') { sfx.thud(4); this.dust.emitParticleAt(c.position.x, c.position.y + 10, 8); }
       if (typeof e === 'string' && e.startsWith('veer:')) { this.toast('BACK OFF! IT\'S MINE!'); sfx.honk(); cam.shake(150, 0.008); }
       if (e === 'go' && this.isLaunch) { this.toast('GO!'); sfx.park(1); }
-      if (e === 'kick') { cam.shake(120, 0.01); this.sparks.emitParticleAt(c.position.x, c.position.y + 10, 16); }
+      if (e === 'kick') { sfx.whoosh(); cam.shake(160, 0.014); this.sparks.emitParticleAt(c.position.x, c.position.y + 10, 16); }
       if (typeof e === 'string' && e.startsWith('lot:')) { const b = e.split(':')[1]; this.toast({ pullout: 'SOMEONE IS LEAVING!', late: 'SPOT OPENING…', snatch: 'SNATCHER INCOMING!' }[b] || ''); }
       if (typeof e === 'string' && e.startsWith('open:')) { this.toast(`SPOT #${+e.slice(5) + 1} OPEN!`); sfx.flip(1); }
       if (e === 'stolen') { this.toast('STOLEN! +50%'); cam.shake(200, 0.01); }
       if (typeof e === 'string' && e.startsWith('taken:')) { const i = +e.slice(6); this.toast(`RIVAL TOOK 🪙${S.spots[i].value}`); sfx.honk(); }
+      if (e === 'stolen') { save.stats.steals++; persist(); }
       if (e === 'parked' && !this.done) this.onParked();
       if (e === 'fail' && !this.done) this.onFail();
     }
   }
   render(S) {
     const c = S.car;
+    if (this.isLaunch) { // speed feel: zoom out + speed lines when going fast
+      const v = Math.hypot(c.velocity.x, c.velocity.y), k = Phaser.Math.Clamp((v - 9) / 14, 0, 1);
+      this.speedK = (this.speedK || 0) + (k - (this.speedK || 0)) * 0.06;
+      this.cameras.main.setZoom(this.baseZoom * (1 - 0.22 * this.speedK));
+      if (k > 0.15 && !S.grounded && Math.random() < k * 1.6) { const cam = this.cameras.main, vw = cam.worldView;
+        this.lines.emitParticleAt(vw.right + 40, vw.y + Math.random() * vw.height, 1); }
+    }
+    this.city1.tilePositionX = this.cameras.main.scrollX * 0.35 / 2;
     this.carImg.setPosition(c.position.x, c.position.y).setRotation(c.angle).setFlipX(S.facing < 0);
     // flip car texture when driving left? keep facing right (simple)
     S.movers.forEach((m, i) => this.moverGfx[i].setPosition(m.b.position.x, m.b.position.y));
     S.carts.forEach((b, i) => this.cartGfx[i].setPosition(b.position.x, b.position.y).setRotation(b.angle));
-    if (this.ghostData && !this.done) { const f = Math.min(S.frame, this.ghostData.length / 3 - 1) * 3;
+    if (this.ghostData && !this.done) { const f = Math.min(Math.max(0, S.rf), this.ghostData.length / 3 - 1) * 3;
       this.ghost.setPosition(this.ghostData[f], this.ghostData[f + 1]).setRotation(this.ghostData[f + 2] / 100); }
     // spots
     const g = this.spotG; g.clear();
@@ -362,11 +430,14 @@ class Play extends Phaser.Scene {
       const t = S.time();
       this.hTimer.textContent = t.toFixed(2);
       if (!this.isLaunch) { this.hP3.classList.toggle('miss', t > this.L.par[1]); this.hP2.classList.toggle('miss', t > this.L.par[0]); }
-      else { const d = Math.max(0, Math.floor((S.maxX - this.L.lipX) / 60)); this.hP2.textContent = '📏 ' + d + 'm'; this.hP3.textContent = '🪙 ' + save.coins; }
+      else { const d = Math.max(0, Math.floor((S.maxX - this.L.lipX) / 60)); this.hTimer.textContent = d + 'm'; this.hP2.textContent = '⏱ ' + t.toFixed(1) + 's'; this.hP3.textContent = '🪙 ' + save.coins;
+        if (this.bestFlagX && !this.gotBestDist && S.maxX > this.bestFlagX) { this.gotBestDist = true; this.toast('NEW BEST DISTANCE!'); sfx.best(); this.cameras.main.flash(120, 255, 200, 120); } }
+      const w = !S.started && this.isLaunch ? (TOUCH ? 'Hold RIGHT to go!' : 'Hold ▶ to go!') : S.warn ? (TOUCH ? WARN[S.warn].replace('(↓ / both sides)', '(hold both sides)').replace('◀ or ▶', 'a side').replace('drive ▶ or hop ↓', 'hold RIGHT or both sides to hop').replace('Hold ▶', 'Hold RIGHT') : WARN[S.warn]) : '';
+      if (this.hWarn.textContent !== w) { this.hWarn.textContent = w; this.hWarn.classList.toggle('on', !!w); }
     }
     this.hFuel.style.width = Math.max(0, S.fuel / (this.L.fuel || 100) * 100) + '%';
     if (this.hBoost) this.hBoost.style.width = (S.boost / (this.L.tune.boostCap || 1) * 100) + '%';
-    if (this.isLaunch) this.hStyle.textContent = (S.flipBank ? `FLIPS 🪙${S.flipBank}` : '') + (S.airFlips ? `  in air: ${S.airFlips}` : ''); else this.hStyle.textContent = S.style ? `STYLE ${S.style}${S.combo ? '  combo x' + S.combo : ''}` : '';
+    if (this.isLaunch) this.hStyle.textContent = (S.cleanFlips || S.sloppyFlips ? `PARK PAY ×${flipMult(S).toFixed(2)}` : '') + (S.airFlips ? `  · in air: ${S.airFlips}` : ''); else this.hStyle.textContent = S.style ? `STYLE ${S.style}${S.combo ? '  combo x' + S.combo : ''}` : '';
   }
   onParked() {
     if (this.isLaunch) return this.launchResult();
@@ -389,35 +460,59 @@ class Play extends Phaser.Scene {
     requestAnimationFrame(() => overlay?.querySelector('.stamp').classList.add('go'));
   }
   launchResult() {
-    const S = this.sim, L = this.L; this.done = true; setZones(false, false);
-    const p = payout(L, S); save.coins += p.total; save.runs++;
-    if (S.parked) save.bestSpot = Math.max(save.bestSpot, S.parkedSpot + 1);
-    if (L.daily) save.daily[L.seed] = Math.max(save.daily[L.seed] || 0, p.total);
+    const S = this.sim, L = this.L; this.done = true; setZones(false, false); if (this.hWarn) { this.hWarn.textContent = ''; this.hWarn.classList.remove('on'); }
+    const before = unlockedSkins(), prevStreak = save.streak || 0;
+    const p0 = payout(L, S), questOk = !!(this.quest && this.quest.test(S, p0));
+    const p = payout(L, S, { quest: questOk ? this.quest.pay : 0, streak: S.parked ? prevStreak : 0 });
+    save.coins += p.total; save.runs++;
+    save.streak = S.parked ? prevStreak + 1 : 0; save.bestStreak = Math.max(save.bestStreak || 0, save.streak);
+    const newDist = p.dist > (save.bestDist || 0); if (newDist) save.bestDist = p.dist;
+    const newSpot = S.parked && S.parkedSpot + 1 > save.bestSpot;
+    if (S.parked) { save.bestSpot = Math.max(save.bestSpot, S.parkedSpot + 1); save.stats.parks++; }
+    if (L.daily) { save.daily[L.seed] = Math.max(save.daily[L.seed] || 0, p.total); save.stats.dailies++; }
     persist();
+    const newSkins = unlockedSkins().filter(k => !before.includes(k));
+    // near miss: ended just short of / next to a free spot
+    let close = null;
+    if (!S.parked) { const cx = S.car.position.x;
+      S.spots.forEach((sp, i) => { if (S.taken.has(i)) return; const d = Math.abs(cx - (sp.x + sp.w / 2)); if (d < 220 && (!close || d < close.d)) close = { i, d }; }); }
     const cam = this.cameras.main;
     if (S.parked) { cam.shake(260, 0.012); cam.flash(120, 255, 255, 255); this.sparks.emitParticleAt(S.car.position.x, S.car.position.y - 10, 60); sfx.park(3); }
-    else { cam.shake(300, 0.016); sfx.fail(); }
+    else if (close) { cam.shake(200, 0.01); sfx.close(); } else { cam.shake(300, 0.016); sfx.fail(); }
     const next = UPGRADES.map(u => ({ u, c: costOf(u, save.up[u.k] || 0), l: save.up[u.k] || 0 })).filter(x => x.l < x.u.max).sort((a, b) => a.c - b.c)[0];
     const line = (k, v) => v ? `<div class="row"><span>${k}</span><b>+${v}</b></div>` : '';
-    overlay = h(`<div><div class="stamp ${S.parked ? '' : 'fail'}">${S.parked ? (S.stolen ? 'STOLEN!' : 'PARKED!') : S.failed}</div><div class="panel p">
-      ${S.parked ? `<div style="font-size:15px">Spot #${S.parkedSpot + 1} of ${L.spots.length}</div>` : `<div class="slip">PARKING DATE SLIPPED → <b>Q${(save.runs % 4) + 1} ${2028 + Math.floor(save.runs / 6)}</b></div>`}
-      <div class="rows">${line('Spot', p.spot)}${line('Distance', p.dist)}${line('Style', p.style)}${line('Flips', p.flips)}${line('Stolen bonus', p.stolen)}${line('No dings', p.clean)}
-      ${L.mult > 1 ? `<div class="row"><span>Coin Magnet</span><b>x${L.mult.toFixed(1)}</b></div>` : ''}</div>
-      <div class="t">🪙 +${p.total} &nbsp;·&nbsp; total 🪙 ${save.coins}</div>
-      ${next ? `<div style="font-size:12px;opacity:.85">${save.coins >= next.c ? '✅ You can afford ' + next.u.name + '!' : 'Next upgrade: ' + next.u.name + ' at 🪙' + next.c}</div>` : ''}
-      <div class="btns"><button class="adbtn" data-a="ad2">📺 Watch ad: 2x coins</button>${!S.parked && !S.revived ? '<button class="adbtn" data-a="adc">📺 Watch ad: continue</button>' : ''}</div>
+    const stamp = S.parked ? (S.stolen ? 'STOLEN!' : 'PARKED!') : close ? 'SO CLOSE!' : S.failed;
+    const why = S.parked ? `Spot #${S.parkedSpot + 1} of ${L.spots.length}${newSpot ? ' · <b class="nb">NEW BEST SPOT!</b>' : ''}`
+      : close ? `${S.failed}: ${Math.max(1, Math.round(close.d / 60))}m from the 🪙${S.spots[close.i].value} spot!` : FAIL_WHY[S.failed] || '';
+    const share = L.daily ? `Spot Thief Daily ${String(L.seed).replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3')}: ${S.parked ? '🅿️ spot #' + (S.parkedSpot + 1) : '💥 ' + S.failed} · ${p.dist}m · 🪙${p.total}${S.cleanFlips ? ' · ' + '🔄'.repeat(Math.min(5, S.cleanFlips)) : ''}` : '';
+    overlay = h(`<div><div class="stamp ${S.parked ? '' : 'fail'}">${stamp}</div><div class="panel res p">
+      <div class="why">${why}</div>
+      <div class="cols"><div class="rows">${line('Spot', p.spot)}${p.fm > 1 ? `<div class="row"><span>Flips ×${p.fm.toFixed(2)}</span><b>+${p.flips}</b></div>` : line('Flips (no park: 20%)', p.flips)}
+        ${line('Stolen bonus', p.stolen)}${line('No dings', p.clean)}${line('🔥 Streak', p.streak)}${questOk ? line('🎯 ' + this.quest.txt, p.quest) : this.quest ? `<div class="row miss"><span>🎯 ${this.quest.txt}</span><b>✗</b></div>` : ''}
+        ${L.mult > 1 ? `<div class="row"><span>Coin Magnet</span><b>x${L.mult.toFixed(1)}</b></div>` : ''}</div>
+      <div class="sum"><div class="t">🪙 +<span class="cnt">0</span></div><div class="tot">total 🪙 ${save.coins}</div>
+        <div class="tags">${p.dist}m${newDist ? ' <b class="nb">NEW BEST DISTANCE!</b>' : ''}${save.streak > 1 ? ` · 🔥 ${save.streak} streak` : ''}${!S.parked && prevStreak > 1 ? ` · streak of ${prevStreak} lost` : ''}</div>
+        ${newSkins.length ? `<div class="nb">🎨 NEW SKIN: ${newSkins.map(k => SKINS.find(x => x.k === k).name).join(', ')}! (Shop)</div>` : ''}
+        ${next ? `<div class="hint">${save.coins >= next.c ? '✅ You can afford ' + next.u.name + '!' : 'Next: ' + next.u.name + ' at 🪙' + next.c}</div>` : ''}</div></div>
+      ${L.daily ? `<div class="daily">🏆 Daily best today: 🪙${save.daily[L.seed]} · leaderboard coming soon <button data-a="share">📋 Copy result</button></div>` : ''}
+      ${adsOn() ? `<div class="btns"><button class="adbtn" data-a="ad2">📺 Watch ad: 2x coins</button>${!S.parked && !S.revived ? '<button class="adbtn" data-a="adc">📺 Watch ad: continue</button>' : ''}</div>` : ''}
       <div class="btns"><button class="main" data-a="r">↻ Run again (R/Enter)</button><button data-a="s">🛠 Shop</button><button data-a="m">Menu</button></div></div></div>`);
+    // coin count-up with ticks
+    const cnt = overlay.querySelector('.cnt'); let shown = 0; const step = Math.max(1, Math.ceil(p.total / 24));
+    const tick = () => { if (!overlay || !cnt.isConnected) return; shown = Math.min(p.total, shown + step); cnt.textContent = shown; sfx.coin(shown / Math.max(1, p.total)); if (shown < p.total) setTimeout(tick, 40); };
+    if (p.total > 0) setTimeout(tick, 250);
     overlay.querySelector('[data-a=r]').onclick = () => startLaunch(L.daily);
-    const ad2 = overlay.querySelector('[data-a=ad2]'), adc = overlay.querySelector('[data-a=adc]');
-    ad2.addEventListener('pointerdown', () => cancel()); adc?.addEventListener('pointerdown', () => cancel());
-    ad2.onclick = () => showRewarded(() => { save.coins += p.total; persist(); ad2.disabled = true; ad2.textContent = `✅ +${p.total} bonus coins`; this.toast('2x COINS!'); });
-    if (adc) adc.onclick = () => showRewarded(() => { save.coins -= p.total; persist(); overlay?.remove(); overlay = null; this.done = false; S.revive(); setZones(true); this.toast('BACK IN THE RACE!'); });
-    if (p.total <= 0) ad2.style.display = 'none';
     const cancel = () => { clearTimeout(this.autoT); const c = overlay?.querySelector('.auto'); if (c) c.remove(); };
+    const ad2 = overlay.querySelector('[data-a=ad2]'), adc = overlay.querySelector('[data-a=adc]'), sh = overlay.querySelector('[data-a=share]');
+    if (ad2) { ad2.addEventListener('pointerdown', cancel); if (p.total <= 0) ad2.style.display = 'none';
+      ad2.onclick = () => showRewarded(() => { save.coins += p.total; persist(); ad2.disabled = true; ad2.textContent = `✅ +${p.total} bonus coins`; this.toast('2x COINS!'); }); }
+    if (adc) { adc.addEventListener('pointerdown', cancel);
+      adc.onclick = () => showRewarded(() => { save.coins -= p.total; if (S.parked === false) save.streak = prevStreak; persist(); overlay?.remove(); overlay = null; this.done = false; S.revive(); setZones(true); this.toast('BACK IN THE RACE!'); }); }
+    if (sh) { sh.addEventListener('pointerdown', cancel); sh.onclick = () => { navigator.clipboard?.writeText(share).then(() => { sh.textContent = '✅ Copied!'; }).catch(() => { sh.textContent = share; }); }; }
     overlay.querySelector('[data-a=s]').addEventListener('pointerdown', cancel); overlay.querySelector('[data-a=m]').addEventListener('pointerdown', cancel);
     overlay.querySelector('.panel').addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') startLaunch(L.daily); });
-    if (!S.parked) { overlay.querySelector('.btns').insertAdjacentHTML('beforebegin', '<div class="auto" style="font-size:12px;opacity:.8">next run in 2.5s… (tap to go now)</div>');
-      this.autoT = setTimeout(() => { if (!shopEl && !menuEl && this.done && this.scene.isActive()) startLaunch(L.daily); }, 2500); }
+    if (!S.parked) { overlay.querySelector('.btns:last-child').insertAdjacentHTML('beforebegin', '<div class="auto">next run in 3s… (tap to go now)</div>');
+      this.autoT = setTimeout(() => { if (!shopEl && !menuEl && this.done && this.scene.isActive()) startLaunch(L.daily); }, 3000); }
     this.events.once('shutdown', () => clearTimeout(this.autoT));
     overlay.querySelector('[data-a=s]').onclick = () => openShop({ daily: L.daily });
     overlay.querySelector('[data-a=m]').onclick = () => showMenu();
@@ -433,7 +528,7 @@ class Play extends Phaser.Scene {
     this.cameras.main.shake(300, 0.016);
     sfx.fail();
     overlay = h(`<div><div class="stamp fail">${S.failed}</div><div class="panel p">
-      <div class="slip">PARKING DATE SLIPPED<br><s>${from}</s> → <b>Q${q} ${y0}</b><br><span style="font-size:12px;opacity:.7">(${save.slips} delay${save.slips > 1 ? 's' : ''} and counting)</span></div>
+      <div class="why">${FAIL_WHY[S.failed] || ''}</div><div class="slip">PARKING DATE SLIPPED<br><s>${from}</s> → <b>Q${q} ${y0}</b><br><span style="font-size:12px;opacity:.7">(${save.slips} delay${save.slips > 1 ? 's' : ''} and counting)</span></div>
       <div class="btns"><button class="main" data-a="r">↻ Retry (R)</button><button data-a="m">Levels</button></div></div></div>`);
     overlay.querySelector('[data-a=r]').onclick = () => this.restartLevel();
     overlay.querySelector('[data-a=m]').onclick = () => showMenu();

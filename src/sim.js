@@ -9,7 +9,7 @@ const LIFT = 0.00175, STEER = 0.00055, DRIVE = 0.0018, HOP = 7.2, SPIN = 0.011, 
 export function createSim(L) {
   const LA = L.mode === 'launch';
   const T = Object.assign({ lift: 1, spin: 1, grip: 1, top: 9.5, boostPow: 0, boostCap: 0, steer: 1 }, L.tune || {});
-  const engine = Engine.create({ gravity: { x: 0, y: 1, scale: 0.001 } });
+  const engine = Engine.create({ gravity: { x: 0, y: 1, scale: LA ? 0.00082 : 0.001 } }); // floatier in Launch mode: more hang time
   const world = engine.world;
   const statics = [];
   const add = (r, opts = {}) => {
@@ -44,7 +44,7 @@ export function createSim(L) {
   if (L.gate) { gate = add(L.gate.r); gate.kind = 'gate'; }
 
   const S = { engine, car, statics, movers, carts, gate, L,
-    frame: 0, facing: 1, boost: T.boostCap, boosting: false, maxX: 0, spotIdx: -1, taken: new Set(), rivalsOut: [], stolen: false, gFrames: 0, onRamp: false, flipBank: 0, airFlips: 0, idleF: 0, slowF: 0, roofF: 0, lot: [], lastHop: -99, fuel: L.fuel, grounded: false, parkHold: 0, parked: false, failed: null,
+    frame: 0, facing: 1, boost: T.boostCap, boosting: false, maxX: 0, spotIdx: -1, taken: new Set(), rivalsOut: [], stolen: false, gFrames: 0, onRamp: false, flipBank: 0, cleanFlips: 0, sloppyFlips: 0, airFlips: 0, idleF: 0, slowF: 0, roofF: 0, lot: [], lastHop: -99, fuel: L.fuel, grounded: false, parkHold: 0, parked: false, failed: null,
     airRot: 0, flips: 0, style: 0, combo: 0, bumps: 0, lastBumpF: -99, events: [], inSpot: false, gateOpen: false,
     thrusting: { up: false, l: false, r: false } };
 
@@ -81,7 +81,7 @@ export function createSim(L) {
     // boost gauge: extra top speed + push on the ground, forward shove in the air
     S.boosting = !!(inp.boost && S.boost > 0);
     if (S.boosting) { S.boost = Math.max(0, S.boost - 0.6);
-      if (!S.grounded) Body.applyForce(car, car.position, { x: fx * 0.0009 * (1 + T.boostPow / 8) * m * S.facing * (Math.cos(a) > 0 ? 1 : -1), y: fy * 0.0009 * m * S.facing });
+      if (!S.grounded) Body.applyForce(car, car.position, { x: fx * 0.0009 * (1 + T.boostPow / 4) * m * S.facing * (Math.cos(a) > 0 ? 1 : -1), y: fy * 0.0009 * m * S.facing });
       else if (!inp.left && !inp.right) inp = { ...inp, [S.facing > 0 ? 'right' : 'left']: true };
     }
     // horizontal
@@ -89,7 +89,7 @@ export function createSim(L) {
     if (dir) {
       if (S.grounded && Math.abs(Math.cos(a)) > 0.6) {
         // wheel traction: accelerate along the car's forward axis toward top speed (no fuel)
-        const sgn = Math.cos(a) > 0 ? 1 : -1, vf = car.velocity.x * fx + car.velocity.y * fy, target = dir * sgn * (LA && car.position.x > L.lipX + 150 ? 4.5 : T.top + (S.boosting ? T.boostPow : 0));
+        const sgn = Math.cos(a) > 0 ? 1 : -1, vf = car.velocity.x * fx + car.velocity.y * fy, target = dir * sgn * (LA && car.position.x > L.lipX + 150 ? (T.lotTop || 4.5) : T.top + (S.boosting ? T.boostPow : 0));
         const acc = vf * Math.sign(target) >= Math.abs(target) ? 0 : Math.sign(target - vf) * Math.min(Math.abs(target - vf), (vf * target < 0 ? 0.9 : 0.42) * T.grip * (S.boosting ? 1.6 : 1));
         Body.setVelocity(car, { x: car.velocity.x + fx * acc, y: car.velocity.y + fy * acc });
       } else if (S.fuel > 0) {
@@ -100,9 +100,10 @@ export function createSim(L) {
     if (dir) S.facing = dir;
     else if (S.grounded) Body.setVelocity(car, { x: car.velocity.x * 0.9, y: car.velocity.y }); // rolling brake (car has no surface friction; traction is modelled here)
     // hop: free jump off the floor (no fuel), along the car's up vector
-    const hopCost = LA && car.position.x > L.lipX ? 8 : 0;
-    if (inp.hop && S.grounded && t - S.lastHop > 24 && (!LA || S.gFrames >= 20) && S.fuel >= hopCost) {
-      S.fuel -= hopCost;
+    const roofFree = S.onRoof && Math.hypot(car.velocity.x, car.velocity.y) < 1.2 && (S.roofHops || 0) < 3;
+    const hopCost = LA && car.position.x > L.lipX && !roofFree ? 8 : 0; // stuck on a car roof: a few free hops off
+    if (inp.hop && S.grounded && t - S.lastHop > 24 && (!LA || S.gFrames >= (S.onRoof ? 6 : 20)) && S.fuel >= hopCost) {
+      S.fuel -= hopCost; if (!hopCost && LA && car.position.x > L.lipX) S.roofHops = (S.roofHops || 0) + 1;
       S.lastHop = t; Body.setVelocity(car, { x: car.velocity.x + ux * HOP, y: Math.min(car.velocity.y, 0) + uy * HOP }); S.events.push('hop');
     }
     // spin
@@ -123,7 +124,7 @@ export function createSim(L) {
       if (mv.t === 'pad') {
         const y = mv.y0 - mv.ay * (0.5 - 0.5 * Math.cos(2 * Math.PI * t / mv.period));
         Body.setPosition(mv.b, { x: mv.x0, y }, true);
-      } else if (mv.t === 'thief' && t > mv.delay && !mv.stopped) {
+      } else if (mv.t === 'thief' && S.rf > mv.delay && !mv.stopped) {
         const nx = mv.b.position.x + mv.vx, left = nx - mv.r[2] / 2;
         const sp = L.spot, cb = car.bounds;
         const guarding = !S.taken.size && cb.max.x > sp.x - 10 && cb.min.x < sp.x + sp.w + 10 && cb.max.y > sp.y - 120;
@@ -173,27 +174,29 @@ export function createSim(L) {
     if (!S.glued && L.tune && L.tune.drag) car.frictionAir = L.tune.drag;
     if (wasGlued && !S.glued && car.position.x >= L.lipX - 6 && T.kick) { Body.setVelocity(car, { x: car.velocity.x * T.kick, y: car.velocity.y * T.kick }); S.events.push('kick'); }
     // contacts
-    let g = false, bump = false, ramp = false;
+    let g = false, bump = false, ramp = false, roofCar = false;
     for (const p of engine.pairs.list) {
       if (!p.isActive) continue;
       const other = p.bodyA === car ? p.bodyB : p.bodyB === car ? p.bodyA : null;
       if (!other) continue;
       for (const c of p.contacts) if (c && c.vertex && c.vertex.y >= car.position.y - 2) g = true;
       if (other.kind === 'ramp') ramp = true;
+      if (other.kind === 'car' && p.contacts.some(c => c && c.vertex && c.vertex.y >= car.position.y - 2)) roofCar = true;
       if (other.kind === 'car' || other.kind === 'thief' || other.label === 'cart') bump = true;
     }
     if (bump && S.frame - S.lastBumpF > 30) { S.bumps++; S.events.push('bump'); }
     if (bump) S.lastBumpF = S.frame;
     if (S.glued) g = true;
+    S.onRoof = roofCar && g;
     const wasG = S.grounded; S.grounded = g; S.onRamp = ramp; S.rampF = ramp ? 0 : (S.rampF ?? 99) + 1; S.gFrames = g ? S.gFrames + 1 : 0;
     if (!g) S.airRot += car.angle - prevA;
     if (Math.abs(S.airRot) > Math.PI * 2 - 0.4) { S.airRot = 0; S.flips++; S.airFlips++; S.combo++; S.style += 100 * S.combo; S.events.push('flip');
       if (gate && !S.gateOpen) { S.gateOpen = true; Composite.remove(world, gate); S.events.push('gate'); } }
     if (g && !wasG) {
       if (S.airFlips > 0) {
-        if (Math.cos(car.angle) > 0.7) { const n = S.airFlips, amt = [0, 8, 25, 55, 100][Math.min(4, n)] + Math.max(0, n - 4) * 60;
-          S.flipBank += amt; S.style += 50 * S.combo; S.events.push('flipland:' + n + ':' + amt); }
-        else { const amt = Math.round(([0, 8, 25, 55, 100][Math.min(4, S.airFlips)] + Math.max(0, S.airFlips - 4) * 60) / 2); S.flipBank += amt; S.events.push('bail:' + amt); }
+        // flips are banked as a PARKING multiplier (+25% per clean flip); unparked they pay only a little
+        if (Math.cos(car.angle) > 0.7) { const n = S.airFlips; S.cleanFlips += n; S.flipBank += 3 * n; S.style += 50 * S.combo; S.events.push('flipland:' + n + ':' + S.cleanFlips); }
+        else { S.sloppyFlips += S.airFlips; S.flipBank += 1 * S.airFlips; S.events.push('bail:' + S.airFlips); }
       }
       S.combo = 0; S.airRot = 0; S.airFlips = 0; }
     // parking check
@@ -231,20 +234,28 @@ export function createSim(L) {
       Composite.add(world, rb); S.rivalsOut.push({ r, b: rb }); S.events.push('taken:' + r.spot);
     }
     S.maxX = Math.max(S.maxX, car.position.x);
-    if (LA && !S.parked && S.started) {
+    S.warn = null;
+    if (LA && !S.parked && S.started) { // lenient auto-fail, always with a reason and a warning first
       const any = inp.left || inp.right || inp.up || inp.hop || inp.spinL || inp.spinR || inp.boost;
-      const sp = Math.hypot(car.velocity.x, car.velocity.y);
+      const sp = Math.hypot(car.velocity.x, car.velocity.y), past = car.position.x > L.lipX;
       S.idleF = any || !g || S.inSpot ? 0 : S.idleF + 1;
-      S.slowF = sp < 0.4 && !S.inSpot && t > 90 ? S.slowF + 1 : 0;
+      S.slowF = sp < 0.4 && !S.inSpot && t > 90 && past ? S.slowF + 1 : 0;
       S.roofF = Math.cos(car.angle) < -0.2 && g ? S.roofF + 1 : 0;
-      if (S.roofF > 150) S.fail('FLIPPED');
-      else if (S.idleF > 180 && car.position.x > L.lipX) S.fail('STALLED');
-      else if (S.slowF > 150 && S.fuel < 3 && S.boost < 3) S.fail('OUT OF JUICE');
-      else if (S.slowF > 240) S.fail('STUCK');
+      // wedged while trying to move: free pop-hop every 1.25s so you can wriggle out
+      if (S.slowF > 0 && S.slowF % 75 === 0 && g && any) { Body.setVelocity(car, { x: S.facing * 2.5, y: -HOP * 0.9 }); S.events.push('unstick'); }
+      const juice = S.fuel >= 3 || S.boost >= 3;
+      if (S.roofF > 40) S.warn = 'upside';
+      else if (S.onRoof && sp < 1) S.warn = 'roof';
+      else if (S.idleF > 50) S.warn = 'idle';
+      else if (S.slowF > 90) S.warn = juice ? 'slow' : 'nojuice';
+      if (S.roofF > 240) S.fail('FLIPPED');
+      else if (S.idleF > 300) S.fail('STALLED');
+      else if (S.slowF > 300 && !juice && !S.onRoof) S.fail('OUT OF JUICE');
+      else if (S.slowF > 480) S.fail('STUCK');
     }
     if (L.pits) for (const [px1, px2, py] of L.pits) if (car.position.x > px1 && car.position.x < px2 && car.position.y > py) S.fail('IN THE PIT');
     if (car.position.y > L.h + 150 || car.position.x < -100 || car.position.x > L.w + 100) S.fail('LEFT THE LOT');
-    if (S.frame > 60 * (L.timeLimit || 45)) S.fail('METER EXPIRED');
+    if (S.rf > 60 * (L.timeLimit || 45)) S.fail('METER EXPIRED');
     if (S.fuel < 0) S.fuel = 0;
   };
   S.revive = () => { // rewarded 'continue': back upright above where you were, with some juice
@@ -255,8 +266,21 @@ export function createSim(L) {
     S.idleF = S.slowF = S.roofF = 0; S.parkHold = 0;
   };
   S.fail = (why) => { if (!S.failed && !S.parked) { S.failed = why; S.events.push('fail'); } };
-  S.time = () => S.frame / 60;
+  S.time = () => (S.started ? (S.frame - S.startF) / 60 : 0); // timers start on your first input
   return S;
 }
 
 export function starsFor(L, t) { return t <= L.par[1] ? 3 : t <= L.par[0] ? 2 : 1; }
+// Human-readable fail reasons and live warnings (shown on screen).
+export const FAIL_WHY = {
+  FLIPPED: 'Stuck upside-down. Tip: land wheels-down, or hold ◀/▶ to rock back over.',
+  STALLED: 'You stopped driving. Hold ▶ to keep rolling to a spot.',
+  'OUT OF JUICE': 'Ran out of air and boost before reaching a spot.',
+  STUCK: 'Wedged between cars. Hop (↓ / both sides) to get out.',
+  'IN THE PIT': 'Dropped into a pothole.',
+  'LEFT THE LOT': 'Flew right out of the lot.',
+  'METER EXPIRED': 'The parking meter ran out.',
+  'SPOT STOLEN': 'The other car got there first.',
+};
+export const WARN = { idle: 'Hold ▶ to keep driving', slow: 'Stuck? Hop off (↓ / both sides)', nojuice: 'Out of juice: roll into the nearest spot!',
+  roof: 'On a car roof: drive ▶ or hop ↓ off it', upside: 'Upside-down! Hold ◀ or ▶ to flip back' };

@@ -6,6 +6,8 @@ const TEST_IDS = {
 };
 const cap = () => window.Capacitor;
 export const isNative = () => !!cap()?.isNativePlatform?.();
+// Ads only exist in the native apps. The web build shows none (?mockads turns on the test mock for QA).
+export const adsOn = () => isNative() || /[?&]mockads/.test(location.search);
 let admob = null, ready = null;
 async function native() {
   if (!isNative()) return null;
@@ -55,4 +57,4 @@ export async function showRewarded(onReward) {
 }
 // interstitial pacing: every 3rd run start, never mid-run
 let runsSince = 0;
-export function onRunStart() { runsSince++; if (runsSince >= 4) { runsSince = 1; return showInterstitial(); } return Promise.resolve(); }
+export function onRunStart() { if (!adsOn()) return Promise.resolve(); runsSince++; if (runsSince >= 4) { runsSince = 1; return showInterstitial(); } return Promise.resolve(); }

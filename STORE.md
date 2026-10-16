@@ -4,6 +4,8 @@ The app is a Capacitor wrapper around the web build (`dist/`).
 - App id: `com.ngtrooper.spotthief`
 - Name: "Spot Thief"
 - Ads: `@capacitor-community/admob` 7.2.0, wired in `src/ads.js`. It uses **Google TEST ad unit IDs only**. No accounts have been created.
+- Ads run **only in the native apps**. The web build (GitHub Pages) shows no ads; `?mockads` turns on a fake test ad for QA.
+- Coins are cosmetic/progression only (no purchases), so no IAP setup is needed yet.
 
 ## Build commands (already set up on the box)
 ```

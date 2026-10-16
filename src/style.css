@@ -69,3 +69,36 @@ button.big{font-size:22px;padding:10px 20px;min-width:200px}button.big small{dis
 .touch{bottom:calc(14px + env(safe-area-inset-bottom))}
 @media (max-height:500px){.hud .l small{display:none}.timer{font-size:26px}.panel{top:60%;padding:10px 14px}.stamp{font-size:56px}.menu h1{font-size:40px}.lv{padding:4px}.grid{gap:6px}.lv .nm{height:16px}}
 @media (orientation:portrait){.grid{grid-template-columns:repeat(2,140px)}.modes{flex-direction:column}.ups{grid-template-columns:repeat(2,160px)}}
+/* ---- v5: scaled, bold UI ---- */
+:root{--z:1;--zp:1;--zm:1}
+.hud{zoom:var(--z);font-weight:900}.hud .ttl{font-size:20px}.timer{font-size:40px;font-weight:900;text-shadow:3px 3px 0 #000}
+.hud .quest{font-size:15px;margin-top:4px;background:#0009;padding:3px 8px;border-radius:6px;display:inline-block}.hud .quest b{color:#ffd23f}
+.hud .bar{display:flex;align-items:center;gap:6px;margin-top:4px}.hud .bar span{font-size:12px;width:46px}.hud .bar .fuel{margin-top:0;width:170px;height:14px}
+.hud .style{font-size:17px}.hud .streak{margin-top:4px;font-size:15px;color:#ff9e3c}.hud .r{text-align:right}
+.topbtns{zoom:var(--z);top:120px}
+.warn{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);zoom:var(--z);font:900 22px "Trebuchet MS",sans-serif;background:#000b;border:3px solid #ffd23f;color:#ffd23f;padding:8px 18px;border-radius:12px;white-space:nowrap;opacity:0;transition:opacity .2s;text-shadow:2px 2px 0 #000}
+.warn.on{opacity:1;animation:wpulse 1s infinite}@keyframes wpulse{50%{transform:translateX(-50%) scale(1.06)}}
+.toast{zoom:var(--z);font-size:32px}
+.stamp{zoom:var(--zp);top:20%}.stamp.fail{font-size:48px}
+.panel{zoom:var(--zp)}
+.panel.res{top:auto;bottom:calc(10px + env(safe-area-inset-bottom));transform:translateX(-50%);padding:10px 16px;min-width:520px;max-width:96vw}
+.panel .why{font-size:16px;margin-bottom:4px}.panel .why b,.nb{color:#ffd23f}
+.panel .cols{display:flex;gap:18px;align-items:center;justify-content:center;text-align:left}
+.panel .rows{margin:0;min-width:200px}.row.miss{opacity:.5}
+.panel .sum{text-align:center}.panel .sum .t{font-size:30px;font-weight:900;color:#ffd23f}.panel .tot{font-size:14px}.panel .tags,.panel .hint{font-size:13px;margin-top:2px}
+.panel .daily{font-size:13px;margin-top:6px}.panel .daily button{font-size:12px;padding:3px 8px;margin-left:6px}
+.panel .auto{font-size:12px;opacity:.8;margin-top:4px}
+.panel .btns{margin-top:6px}
+.menu>*,.shop>*{zoom:var(--zm)}
+.tut .card{zoom:var(--zm)}
+.up .stat{font-size:12px}.up .stat .nx{color:#1e9e52}
+.garage{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;max-width:840px}.garage>b{margin-right:4px}
+.garage .sk{font-size:12px;padding:4px 8px;display:flex;align-items:center;gap:5px}.garage .sk i{width:14px;height:14px;border:2px solid #000;border-radius:3px;display:inline-block}
+.garage .sk.sel{background:#ffd23f}.garage .sk:disabled{opacity:.55}
+/* big translucent HOLD zones */
+.zones div{align-items:center;padding-bottom:0;background:#ffffff08;border:2px dashed #ffffff30;margin:6px;border-radius:24px}
+.zones div.held{background:#ffd23f30;border-color:#ffd23f}
+.zones .zl span,.zones .zr span{zoom:var(--z);background:transparent;border:0;display:flex;flex-direction:column;align-items:center;font-size:18px;opacity:.8;margin-top:34vh}
+.zones span b{font-size:30px;letter-spacing:4px}
+@media (max-height:500px){.panel.res{zoom:.82;min-width:480px}.panel.res .why{font-size:14px}.panel .sum .t{font-size:24px}.stamp{top:16%}.panel.res .hint,.panel.res .tags{font-size:12px}}
+.panel.res .rows:empty{display:none}

@@ -22,5 +22,10 @@ export const sfx = {
   park(s) { [523, 659, 784, 1047].slice(0, s + 1).forEach((f, i) => tone(f, 0.18, 'square', 0.05, null, i * 0.09)); },
   fail() { tone(300, 0.5, 'sawtooth', 0.05, 80); },
   click() { tone(800, 0.05, 'square', 0.03); },
+  coin(k) { tone(900 + k * 700, 0.05, 'square', 0.025); },
+  buy() { [660, 880, 1320].forEach((f, i) => tone(f, 0.1, 'square', 0.05, null, i * 0.06)); noise(0.12, 0.03); },
+  whoosh() { noise(0.35, 0.09); tone(220, 0.35, 'sawtooth', 0.04, 880); },
+  best() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.14, 'triangle', 0.07, null, i * 0.07)); },
+  close() { tone(440, 0.18, 'square', 0.05, 415); tone(415, 0.18, 'square', 0.05, 392, 0.2); tone(392, 0.4, 'square', 0.05, 330, 0.4); },
 };
 addEventListener('pointerdown', ac, { once: true }); addEventListener('keydown', ac, { once: true });

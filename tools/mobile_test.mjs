@@ -4,7 +4,12 @@ const URL = process.argv[2] || 'http://localhost:4173/';
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const ctx = await b.newContext({ ...devices['Pixel 7 landscape'] });
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(String(e)));
+// plain web build: no ads at all
 await p.goto(URL); await p.waitForFunction(() => window.__pp && document.querySelector('.menu'));
+await p.evaluate(() => { window.__pp.save.tut = 1; window.__pp.startLaunch(); }); await p.waitForTimeout(600);
+await p.evaluate(() => window.__pp.scene.sim.fail('STUCK')); await p.waitForSelector('.panel.res'); await p.screenshot({ path: 'shots/phone_results_web.png' });
+console.log('web build shows ad buttons:', !!(await p.$('.adbtn')), '| why line:', await p.textContent('.panel .why'));
+await p.evaluate(() => { localStorage.clear(); }); await p.goto(URL + '?mockads'); await p.waitForFunction(() => window.__pp && document.querySelector('.menu'));
 await p.screenshot({ path: 'shots/phone_menu.png' });
 await p.tap('[data-a=launch]'); await p.waitForSelector('.tut'); await p.screenshot({ path: 'shots/phone_tutorial.png' });
 for (let k = 0; k < 3; k++) { await p.tap('.tut'); await p.waitForTimeout(150); }
@@ -22,7 +27,7 @@ const c0 = await p.evaluate(() => window.__pp.save.coins);
 await p.tap('[data-a=adc]'); await p.waitForSelector('.mockad'); await p.waitForSelector('.mockad', { state: 'detached', timeout: 6000 });
 const cont = await p.evaluate(() => ({ failed: window.__pp.scene.sim.failed, done: window.__pp.scene.done, revived: window.__pp.scene.sim.revived }));
 console.log('rewarded continue -> run resumed:', !cont.failed && !cont.done && cont.revived);
-await p.evaluate(() => window.__pp.scene.sim.fail('STUCK')); await p.waitForSelector('[data-a=ad2]');
+await p.evaluate(() => { const S = window.__pp.scene.sim; S.flipBank = 50; S.fail('STUCK'); }); await p.waitForSelector('[data-a=ad2]');
 const before = await p.evaluate(() => window.__pp.save.coins);
 await p.tap('[data-a=ad2]'); await p.waitForSelector('.mockad', { state: 'detached', timeout: 6000 }); await p.waitForTimeout(200);
 const after = await p.evaluate(() => window.__pp.save.coins); const cont2 = await p.$('[data-a=adc]');

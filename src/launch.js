@@ -2,31 +2,36 @@
 export function rng(seed) { let s = seed >>> 0 || 1; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 export const dailySeed = (d = new Date()) => +`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
 
+// Each level is a clearly felt step: big early steps, diminishing later (cumulative share of the max bonus).
+export const CURVE = [0, 0.3, 0.52, 0.7, 0.84, 0.94, 1];
+const cv = (l, max) => CURVE[Math.round((l / max) * 6)] ?? 1;
 export const UPGRADES = [
-  { k: 'boostCap', name: 'Boost Tank', desc: 'More boost to burn on the ramp', base: 30, max: 6 },
-  { k: 'boostPow', name: 'Boost Power', desc: 'Higher top speed while boosting', base: 40, max: 6 },
-  { k: 'air', name: 'Air Tank', desc: 'More thruster fuel in the air', base: 35, max: 6 },
-  { k: 'thrust', name: 'Thrusters', desc: 'Stronger lift and air-steer', base: 45, max: 6 },
-  { k: 'spin', name: 'Spin Gyro', desc: 'Faster flips = more style', base: 25, max: 4 },
-  { k: 'grip', name: 'Tire Grip', desc: 'Quicker acceleration and braking', base: 25, max: 4 },
-  { k: 'mult', name: 'Coin Magnet', desc: '+20% coins per level', base: 80, max: 5 },
+  { k: 'boostPow', name: 'Launch Power', desc: 'Faster off the ramp', base: 40, max: 6, stat: l => ({ label: 'Launch speed', v: Math.round(tuneFrom({ boostPow: l }).tune.kick * 100) + '%' }) },
+  { k: 'air', name: 'Air Tank', desc: 'Fly longer (hold ▶ in the air)', base: 45, max: 6, stat: l => ({ label: 'Flight fuel', v: Math.round(tuneFrom({ air: l }).fuel) }) },
+  { k: 'thrust', name: 'Thrusters', desc: 'Stronger lift, less drag', base: 60, max: 6, stat: l => ({ label: 'Thrust', v: Math.round(tuneFrom({ thrust: l }).tune.lift * 100) + '%' }) },
+  { k: 'boostCap', name: 'Boost Tank', desc: 'More boost on the ramp', base: 50, max: 4, stat: l => ({ label: 'Boost', v: Math.round(tuneFrom({ boostCap: l }).tune.boostCap) }) },
+  { k: 'grip', name: 'Tires', desc: 'Drive faster in the lot to fix short landings', base: 70, max: 4, stat: l => ({ label: 'Lot speed', v: tuneFrom({ grip: l }).tune.lotTop.toFixed(1) }) },
+  { k: 'spin', name: 'Spin Gyro', desc: 'Faster flips (flips multiply your parking pay)', base: 70, max: 4, stat: l => ({ label: 'Flip speed', v: Math.round(tuneFrom({ spin: l }).tune.spin * 100) + '%' }) },
+  { k: 'mult', name: 'Coin Magnet', desc: '+10% coins per level', base: 200, max: 3, stat: l => ({ label: 'Coins', v: '+' + l * 10 + '%' }) },
 ];
-export const costOf = (u, lvl) => Math.round(u.base * Math.pow(1.75, lvl) / 5) * 5;
+export const costOf = (u, lvl) => Math.round(u.base * Math.pow(1.65, lvl) / 5) * 5;
 
 export function tuneFrom(up) {
-  const g = k => up[k] || 0;
+  const c = k => { const u = UPGRADES.find(x => x.k === k); return cv(Math.min(up[k] || 0, u.max), u.max); };
   return {
-    tune: { boostCap: 30 + 20 * g('boostCap'), boostPow: 2 + 1.5 * g('boostPow'), lift: 1 + 0.07 * g('thrust'), steer: 1 + 0.25 * g('thrust'),
-      spin: 1 + 0.2 * g('spin'), grip: 1 + 0.25 * g('grip'), top: 9.5, kick: 1.6 + 0.04 * g('boostPow'), drag: 0.022 - 0.0015 * g('thrust') },
-    fuel: 30 + 14 * g('air'),
-    mult: 1 + 0.2 * g('mult'),
+    tune: { boostCap: 30 + 75 * c('boostCap'), boostPow: 2 + 6 * c('boostPow'), lift: 1 + 0.3 * c('thrust'), steer: 1 + 1 * c('thrust'),
+      spin: 1 + 0.8 * c('spin'), grip: 1 + 1 * c('grip'), lotTop: 4.5 + 3 * c('grip'), top: 9.5, kick: 2.1 + 0.9 * c('boostPow'), drag: 0.022 - 0.005 * c('thrust') },
+    fuel: 30 + 70 * c('air'),
+    mult: 1 + 0.1 * (up.mult || 0),
   };
 }
 export const progressOf = up => UPGRADES.reduce((a, u) => a + (up[u.k] || 0), 0) / UPGRADES.reduce((a, u) => a + u.max, 0);
 
 const KINDS = ['sedan', 'suv', 'van', 'truck', 'mini'];
 const SZ = { sedan: [118, 40], suv: [124, 58], van: [140, 70], truck: [150, 64], mini: [96, 36] };
-export const SPOT_VALUES = [10, 18, 30, 45, 65, 90, 125, 170, 230, 310];
+export const SPOT_VALUES = [20, 30, 45, 60, 80, 100, 125, 155, 190, 230];
+// Spot distances (m past the kicker). Tuned to a human-ish flight model (tools/range.mjs): fresh reaches #1-2, each upgrade tier adds about one.
+export const LADDER = [16, 34, 56, 76, 98, 114, 128, 156, 180, 200];
 
 export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   const R = rng(seed), T = tuneFrom(up), gy = 620;
@@ -34,7 +39,7 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   // ramp: start deck, curved drop, kicker
   const prof = [[-40, 140], [160, 140]];
   for (let i = 1; i <= 14; i++) { const t = i / 14; prof.push([160 + 700 * t, 140 + 400 * (0.5 - 0.5 * Math.cos(Math.PI * t))]); }
-  const kick = 0.42 + R() * 0.1; // kicker steepness
+  const kick = 0.62 + R() * 0.1; // kicker steepness (steeper = higher arc)
   for (let i = 1; i <= 6; i++) { const t = i / 6; prof.push([860 + 220 * t, 540 - 120 * kick * 2 * t * t]); }
   const lipX = 1080, lipY = prof[prof.length - 1][1];
   // lot
@@ -42,9 +47,11 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   solids.push({ t: 'wall', r: [-60, -600, 20, 1600] });
   const nSpots = 10;
   for (let i = 0; i < nSpots; i++) {
-    const gap = 260 + i * 120 + R() * 160;
-    // stuff between spots: parked cars, cones, a pit sometimes
-    let cx = x, end = x + gap;
+    const w = Math.max(76, 118 - i * 4 - R() * 14);
+    const lk = KINDS[Math.floor(R() * KINDS.length)], rk = KINDS[Math.floor(R() * KINDS.length)];
+    const center = lipX + LADDER[i] * 60 * (0.96 + R() * 0.08);
+    const end = Math.max(x, center - w / 2 - SZ[lk][0]);
+    let cx = x;
     while (cx < end - 140) {
       const roll = R();
       if (roll < 0.55) { const k = KINDS[Math.floor(R() * KINDS.length)]; const [w, h] = SZ[k];
@@ -54,9 +61,6 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
       else cx += 60 + R() * 80;
     }
     x = end;
-    const w = Math.max(76, 118 - i * 4 - R() * 14);
-    // flanking cars so you have to drop in
-    const lk = KINDS[Math.floor(R() * KINDS.length)], rk = KINDS[Math.floor(R() * KINDS.length)];
     solids.push({ t: 'car', kind: lk, r: [x, gy - SZ[lk][1], SZ[lk][0], SZ[lk][1]] }); x += SZ[lk][0];
     spots.push({ x, y: gy, w, value: SPOT_VALUES[i] }); x += w;
     solids.push({ t: 'car', kind: rk, r: [x, gy - SZ[rk][1], SZ[rk][0], SZ[rk][1]] }); x += SZ[rk][0] + 20;
@@ -107,11 +111,13 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
     ramp: [prof], prof, solids, spots, pits, rivals, lotcars, lipX, lipY, timeLimit: 40 };
 }
 
-export function payout(L, S) {
-  const style = S.style;
+export const flipMult = S => 1 + 0.25 * Math.min(8, S.cleanFlips || 0) + 0.1 * Math.min(4, S.sloppyFlips || 0);
+// Parking is the dominant reward: spot value x flip multiplier (+ steal / clean / streak bonuses). Not parked: 20% of flip value only.
+export function payout(L, S, ctx = {}) {
+  const quest = ctx.quest || 0, streak = ctx.streak || 0, m = L.mult;
   const dist = Math.max(0, Math.floor((S.maxX - L.lipX) / 60));
-  const flips = S.flipBank || 0;
-  if (!S.parked) return { total: Math.round((dist + flips) * L.mult), dist, flips, spot: 0, style: 0, stolen: 0 };
-  const spot = L.spots[S.parkedSpot].value, st = Math.round(style / 10), stolen = S.stolen ? Math.round(spot * 0.5) : 0, clean = S.bumps ? 0 : 5;
-  return { total: Math.round((spot + st + stolen + clean + dist + flips) * L.mult), dist, flips, spot, style: st, stolen, clean };
+  if (!S.parked) { const flips = Math.min(10, Math.round((S.flipBank || 0) * 0.2)); return { total: Math.round((flips + quest) * m), dist, flips, quest, spot: 0, fm: 1 }; }
+  const spot = L.spots[S.parkedSpot].value, fm = flipMult(S), flips = Math.round(spot * (fm - 1));
+  const stolen = S.stolen ? Math.round(spot * 0.5) : 0, clean = S.bumps ? 0 : Math.round(spot * 0.1), streakB = Math.round(spot * 0.1 * Math.min(5, streak));
+  return { total: Math.round((spot + flips + stolen + clean + streakB + quest) * m), dist, flips, fm, spot, stolen, clean, streak: streakB, quest };
 }
