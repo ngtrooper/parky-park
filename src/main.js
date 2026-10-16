@@ -11,9 +11,9 @@ const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 const ghostKey = id => 'parkypark_ghost_' + id;
 
 // ---------- input ----------
-const input = { left: false, right: false, up: false, spinL: false, spinR: false };
+const input = { left: false, right: false, up: false, spinL: false, spinR: false, hop: false };
 const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', Space: 'up',
-  KeyQ: 'spinL', KeyZ: 'spinL', KeyE: 'spinR', KeyX: 'spinR' };
+  KeyQ: 'spinL', KeyZ: 'spinL', KeyE: 'spinR', KeyX: 'spinR', KeyS: 'hop', ArrowDown: 'hop', ShiftLeft: 'hop', ShiftRight: 'hop' };
 addEventListener('keydown', e => {
   if (KEYMAP[e.code]) { input[KEYMAP[e.code]] = true; e.preventDefault(); }
   if (e.repeat) return;
@@ -33,7 +33,7 @@ let hud, overlay, menuEl, touchEl;
 
 function buildTouch() {
   touchEl = h(`<div class="touch p"><div><button data-k="left">◀</button><button data-k="right">▶</button></div>
-    <div><button data-k="spinL">⟲</button><button data-k="spinR">⟳</button><button data-k="up">▲</button></div></div>`);
+    <div><button data-k="spinL">⟲</button><button data-k="spinR">⟳</button><button data-k="hop">⤒</button><button data-k="up">▲</button></div></div>`);
   touchEl.querySelectorAll('button').forEach(b => {
     const k = b.dataset.k;
     const on = e => { e.preventDefault(); input[k] = true; b.classList.add('held'); };
@@ -55,7 +55,7 @@ function showMenu() {
       return `<div class="lv ${locked ? 'locked' : ''}" data-id="${L.id}"><div class="n">${L.id}</div><div class="nm">${L.name}</div>
         <div class="s">${starStr(save.stars[L.id] || 0)}</div><div class="bt">${save.best[L.id] ? 'best ' + fmt(save.best[L.id]) : 'par ' + L.par[1] + 's'}</div></div>`;
     }).join('')}</div>
-    <div class="keys">◀ ▶ drive / air-steer &nbsp; ▲ or SPACE thrusters &nbsp; Q / E spin (flips = style!)<br>R instant retry &nbsp; ENTER next &nbsp; ESC levels</div></div>`);
+    <div class="keys">◀ ▶ drive / air-steer &nbsp; S / ↓ / SHIFT hop (free) &nbsp; ▲ / W / SPACE thrusters &nbsp; Q / E spin, wheelie &amp; flip<br>R instant retry &nbsp; ENTER next &nbsp; ESC levels</div></div>`);
   menuEl.querySelectorAll('.lv').forEach(el => el.addEventListener('click', () => { sfx.click(); startLevel(+el.dataset.id); }));
   ui.appendChild(menuEl);
 }
@@ -158,7 +158,7 @@ class Play extends Phaser.Scene {
     while (this.acc >= DT && steps < 6) {
       this.acc -= DT; steps++;
       let inp = input;
-      if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16) }; }
+      if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32) }; }
       const vyBefore = S.car.velocity.y, wasG = S.grounded;
       S.step(inp);
       if (!S.parked && !S.failed) this.ghostRec.push(Math.round(S.car.position.x), Math.round(S.car.position.y), Math.round(S.car.angle * 100));
@@ -192,13 +192,14 @@ class Play extends Phaser.Scene {
       if (e === 'gate') { this.gateGfx?.destroy(); this.gateTxt?.setText('OPEN!'); cam.flash(150, 255, 230, 120); }
       if (e === 'honk') { sfx.honk(); this.toast('HONK HONK'); }
       if (e === 'bump') sfx.bump();
+      if (e === 'hop') { sfx.thud(4); this.dust.emitParticleAt(c.position.x, c.position.y + 10, 6); }
       if (e === 'parked' && !this.done) this.onParked();
       if (e === 'fail' && !this.done) this.onFail();
     }
   }
   render(S) {
     const c = S.car;
-    this.carImg.setPosition(c.position.x, c.position.y).setRotation(c.angle);
+    this.carImg.setPosition(c.position.x, c.position.y).setRotation(c.angle).setFlipX(S.facing < 0);
     // flip car texture when driving left? keep facing right (simple)
     S.movers.forEach((m, i) => this.moverGfx[i].setPosition(m.b.position.x, m.b.position.y));
     S.carts.forEach((b, i) => this.cartGfx[i].setPosition(b.position.x, b.position.y).setRotation(b.angle));

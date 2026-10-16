@@ -3,7 +3,7 @@ import Matter from 'matter-js';
 const { Engine, Bodies, Body, Composite } = Matter;
 
 export const CAR_W = 60, CAR_H = 22, DT = 1000 / 60;
-const LIFT = 0.00175, STEER = 0.00055, DRIVE = 0.0011, SPIN = 0.011, MAXSPIN = 0.22;
+const LIFT = 0.00175, STEER = 0.00055, DRIVE = 0.0018, HOP = 7.2, SPIN = 0.011, MAXSPIN = 0.22;
 
 export function createSim(L) {
   const engine = Engine.create({ gravity: { x: 0, y: 1, scale: 0.001 } });
@@ -15,7 +15,7 @@ export function createSim(L) {
   };
   for (const s of L.solids) { const b = add(s.r, s.t === 'cone' ? { chamfer: { radius: 4 } } : {}); b.kind = s.t; b.carKind = s.kind; statics.push(b); }
   const car = Bodies.rectangle(L.start.x, L.start.y, CAR_W, CAR_H, {
-    chamfer: { radius: [9, 4, 3, 3] }, friction: 0.6, frictionAir: 0.012, restitution: 0.05, density: 0.002, label: 'car' });
+    chamfer: { radius: [9, 4, 3, 3] }, friction: 0, frictionStatic: 0, frictionAir: 0.012, restitution: 0.05, density: 0.002, label: 'car' });
   Composite.add(world, car);
   const movers = (L.movers || []).map(m => {
     const b = add(m.r, { friction: 1 }); b.kind = m.t;
@@ -29,7 +29,7 @@ export function createSim(L) {
   if (L.gate) { gate = add(L.gate.r); gate.kind = 'gate'; }
 
   const S = { engine, car, statics, movers, carts, gate, L,
-    frame: 0, fuel: L.fuel, grounded: false, parkHold: 0, parked: false, failed: null,
+    frame: 0, facing: 1, lastHop: -99, fuel: L.fuel, grounded: false, parkHold: 0, parked: false, failed: null,
     airRot: 0, flips: 0, style: 0, combo: 0, bumps: 0, lastBumpF: -99, events: [], inSpot: false, gateOpen: false,
     thrusting: { up: false, l: false, r: false } };
 
@@ -56,16 +56,25 @@ export function createSim(L) {
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     if (dir) {
       if (S.grounded && Math.abs(Math.cos(a)) > 0.6) {
-        const sgn = Math.cos(a) > 0 ? 1 : -1;
-        if (dir * car.velocity.x * sgn < 9) Body.applyForce(car, car.position, { x: fx * DRIVE * m * dir * sgn, y: fy * DRIVE * m * dir * sgn });
+        // wheel traction: accelerate along the car's forward axis toward top speed (no fuel)
+        const sgn = Math.cos(a) > 0 ? 1 : -1, vf = car.velocity.x * fx + car.velocity.y * fy, target = dir * sgn * 9.5;
+        const acc = Math.sign(target - vf) * Math.min(Math.abs(target - vf), vf * target < 0 ? 0.9 : 0.42);
+        Body.setVelocity(car, { x: car.velocity.x + fx * acc, y: car.velocity.y + fy * acc });
       } else if (S.fuel > 0) {
         Body.applyForce(car, car.position, { x: STEER * m * dir, y: 0 });
         S.fuel -= 0.07 * fuelRate; if (dir > 0) S.thrusting.r = true; else S.thrusting.l = true;
       }
     }
+    if (dir) S.facing = dir;
+    else if (S.grounded) Body.setVelocity(car, { x: car.velocity.x * 0.9, y: car.velocity.y }); // rolling brake (car has no surface friction; traction is modelled here)
+    // hop: free jump off the floor (no fuel), along the car's up vector
+    if (inp.hop && S.grounded && t - S.lastHop > 24) {
+      S.lastHop = t; Body.setVelocity(car, { x: car.velocity.x + ux * HOP, y: Math.min(car.velocity.y, 0) + uy * HOP }); S.events.push('hop');
+    }
     // spin
     const sd = (inp.spinR ? 1 : 0) - (inp.spinL ? 1 : 0);
-    if (sd && !S.grounded) Body.setAngularVelocity(car, Math.max(-MAXSPIN, Math.min(MAXSPIN, car.angularVelocity + SPIN * sd)));
+    if (sd && S.grounded) Body.setAngularVelocity(car, Math.max(-0.09, Math.min(0.09, car.angularVelocity + 0.012 * sd))); // wheelie / kick-up
+    else if (sd && !S.grounded) Body.setAngularVelocity(car, Math.max(-MAXSPIN, Math.min(MAXSPIN, car.angularVelocity + SPIN * sd)));
     else if (!S.grounded) Body.setAngularVelocity(car, car.angularVelocity * 0.97);
     // self-righting assist when stuck on roof/side
     if (S.grounded && Math.cos(a) < 0.3 && Math.hypot(car.velocity.x, car.velocity.y) < 1.5) {

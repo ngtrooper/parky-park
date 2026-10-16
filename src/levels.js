@@ -53,7 +53,7 @@ export const LEVELS = [
   },
   {
     id: 5, name: 'Different Floor', hint: 'Ramps are coned off. Take the elevator shaft. You ARE the elevator.',
-    w: 1400, h: 760, start: { x: 380, y: 670 }, fuel: 100, par: [16, 10.8], sky: 1,
+    w: 1400, h: 760, start: { x: 380, y: 670 }, fuel: 100, par: [14, 9], sky: 1,
     solids: [G(0, 1400, 700), W(-20, -400, 20, 1300), W(1400, -400, 20, 1300),
       W(260, 0, 30, 560),                       // garage back wall
       W(290, 540, 840, 18), W(290, 380, 840, 18), W(290, 220, 840, 18), // floors 1-3 (floor 3 surface y=220)
@@ -77,7 +77,7 @@ export const LEVELS = [
   },
   {
     id: 7, name: 'Premium Parking', hint: 'Land on the moving pad. Starbayse valet only.',
-    w: 1500, h: 900, start: { x: 120, y: 770 }, fuel: 100, par: [12, 7.8], sky: 3,
+    w: 1500, h: 900, start: { x: 120, y: 770 }, fuel: 100, par: [13, 10.3], sky: 3,
     solids: [G(0, 1500, 800, 100), W(-20, -600, 20, 1600), W(1500, -600, 20, 1600),
       W(1200, 120, 60, 680),             // launch tower
       W(1260, 120, 200, 680),            // rocket body
@@ -90,7 +90,7 @@ export const LEVELS = [
   },
   {
     id: 8, name: 'Kickflip Required', hint: 'The gate only opens for style. Do a flip in the air!',
-    w: 1300, h: 760, start: { x: 140, y: 670 }, fuel: 100, par: [10.5, 6.7], sky: 2,
+    w: 1300, h: 760, start: { x: 140, y: 670 }, fuel: 100, par: [9, 6.7], sky: 2,
     solids: [G(0, 1300, 700), W(-20, -400, 20, 1300), W(1300, -400, 20, 1300),
       W(840, 520, 20, 60), W(1060, 520, 20, 180), W(840, 500, 240, 20), // garage box
       C(1100, 'sedan', 700)],
