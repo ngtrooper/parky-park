@@ -248,7 +248,9 @@ class Play extends Phaser.Scene {
       if (e === 'bump') sfx.bump();
       if (e === 'hop') { sfx.thud(4); this.dust.emitParticleAt(c.position.x, c.position.y + 10, 6); }
       if (typeof e === 'string' && e.startsWith('flipland:')) { const [, n, amt] = e.split(':'); this.toast(`${['', 'FLIP', 'DOUBLE FLIP', 'TRIPLE FLIP'][n] || 'INSANE x' + n}! 🪙+${amt}`); sfx.park(Math.min(3, +n)); cam.flash(90, 255, 230, 120); }
-      if (e === 'bail') { this.toast('BAILED! flips lost'); sfx.bump(); }
+      if (typeof e === 'string' && e.startsWith('bail')) { this.toast(`SLOPPY LANDING! 🪙+${e.split(':')[1] || 0}`); sfx.bump(); }
+      if (typeof e === 'string' && e.startsWith('veer:')) { this.toast('BACK OFF! IT\'S MINE!'); sfx.honk(); cam.shake(150, 0.008); }
+      if (e === 'kick') { cam.shake(120, 0.01); this.sparks.emitParticleAt(c.position.x, c.position.y + 10, 16); }
       if (typeof e === 'string' && e.startsWith('lot:')) { const b = e.split(':')[1]; this.toast({ pullout: 'SOMEONE IS LEAVING!', late: 'SPOT OPENING…', snatch: 'SNATCHER INCOMING!' }[b] || ''); }
       if (typeof e === 'string' && e.startsWith('open:')) { this.toast(`SPOT #${+e.slice(5) + 1} OPEN!`); sfx.flip(1); }
       if (e === 'stolen') { this.toast('STOLEN! +50%'); cam.shake(200, 0.01); }
@@ -285,7 +287,11 @@ class Play extends Phaser.Scene {
       const yAt = x => { for (let i = 0; i < prof.length - 1; i++) if (x <= prof[i + 1][0]) { const [x1, y1] = prof[i], [x2, y2] = prof[i + 1]; return y1 + (y2 - y1) * (x - x1) / (x2 - x1); } return prof[prof.length - 1][1]; };
       S.rivals.forEach((r, i) => {
         const im = this.rivalGfx[i], sp = S.spotRect(r.spot);
-        if (r.arrived) { if (r.blocked) im.setVisible(false); else im.setPosition(sp.x + sp.w / 2, sp.y - 20).setRotation(0); return; }
+        if (r.arrived) {
+          if (r.blocked) { const k = (S.frame - r.blockedF) / 60; // comic veer-off: bounce up, spin, fly away
+            im.setPosition(sp.x + sp.w / 2 + k * 420, sp.y - 120 - k * 260 + Math.max(0, 40 - k * 200)).setRotation(k * 6).setVisible(k < 3); }
+          else im.setPosition(sp.x + sp.w / 2, sp.y - 20).setRotation(0);
+          return; }
         if (S.frame < r.lipF) { const x = r.path[S.frame], x2 = r.path[Math.min(r.path.length - 1, S.frame + 1)];
           im.setPosition(x, yAt(x) - 18 - r.lane * 3).setRotation(Math.atan2(yAt(x2 + 6) - yAt(x2 - 6), 12)); return; }
         const t = (S.frame - r.lipF) / (r.arrive - r.lipF), tx = sp.x + sp.w / 2, ty = sp.y - 20;

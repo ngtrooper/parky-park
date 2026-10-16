@@ -17,8 +17,8 @@ export function tuneFrom(up) {
   const g = k => up[k] || 0;
   return {
     tune: { boostCap: 30 + 20 * g('boostCap'), boostPow: 2 + 1.5 * g('boostPow'), lift: 1 + 0.07 * g('thrust'), steer: 1 + 0.25 * g('thrust'),
-      spin: 1 + 0.2 * g('spin'), grip: 1 + 0.25 * g('grip'), top: 9.5, drag: 0.022 - 0.0015 * g('thrust') },
-    fuel: 22 + 13 * g('air'),
+      spin: 1 + 0.2 * g('spin'), grip: 1 + 0.25 * g('grip'), top: 9.5, kick: 1.6 + 0.04 * g('boostPow'), drag: 0.022 - 0.0015 * g('thrust') },
+    fuel: 30 + 14 * g('air'),
     mult: 1 + 0.2 * g('mult'),
   };
 }
@@ -68,16 +68,17 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   solids.push({ t: 'wall', r: [x + 600, -600, 20, 1600] });
   // lot behaviours mixed in (not on spot #1 so the first spot is always learnable)
   const lotcars = [];
+  let lastSnatch = -9;
   for (let i = 1; i < nSpots; i++) {
     const roll = R(), sp = spots[i], cx = sp.x + sp.w / 2, k = KINDS[Math.floor(R() * 2)];
     const [w, h] = SZ[k];
     if (roll < 0.16) lotcars.push({ spot: i, beh: 'pullout', kind: k, x: cx, y: gy - 20, w: Math.min(sp.w - 6, 96), h: 36 });
     else if (roll < 0.28) lotcars.push({ spot: i, beh: 'late', at: 200 + Math.floor(R() * 300), kind: k, x: cx, y: gy - 20, w: Math.min(sp.w - 6, 96), h: 36 });
     else if (roll < 0.42) lotcars.push({ spot: i, beh: 'blocker', kind: 'mini', x: cx, y: gy - 100, w: 96, h: 36 });
-    else if (roll < 0.56) lotcars.push({ spot: i, beh: 'snatch', kind: 'sedan', x: cx + 420, y: gy - 300, w: Math.min(sp.w - 6, 96), h: 36 });
+    else if (roll < 0.5 && i - lastSnatch > 2 && (lastSnatch = i)) lotcars.push({ spot: i, beh: 'snatch', kind: 'sedan', x: cx + 420, y: gy - 300, w: Math.min(sp.w - 6, 96), h: 36 });
   }
   // rivals: start with you on their own ramp lane, race for the spots just past your best
-  const prog = progressOf(up), nR = 2 + Math.round(prog * 3);
+  const prog = progressOf(up), nR = Math.min(4, 2 + Math.round(prog * 2));
   const vr = 9 + prog * 5, vf = 10 + prog * 4.5, rivals = [];
   const base = Math.max(1, Math.min(nSpots - 2, bestSpot));
   for (let j = 0; j < nR; j++) {
