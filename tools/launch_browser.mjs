@@ -11,7 +11,7 @@ await page.goto(URL); await page.waitForFunction(() => window.__pp && document.q
 await page.screenshot({ path: 'shots/launch_menu.png' });
 let ok = true;
 for (const [n, p] of plan.entries()) {
-  await page.evaluate(up => { window.__pp.save.up = up; }, p.up);
+  await page.evaluate(up => { window.__pp.save.up = up; window.__pp.save.bestSpot = 0; }, p.up);
   const L = genLot(p.seed, p.up); let best = null;
   for (let i = L.spots.length - 1; i >= 0 && !best; i--) { const r = tryRun(L, i); if (r.S.parked && r.S.parkedSpot === i) best = { i, rec: r.rec.map(enc), coins: r.S }; }
   const coins0 = await page.evaluate(() => window.__pp.save.coins);
@@ -23,6 +23,12 @@ for (const [n, p] of plan.entries()) {
   console.log(`tier ${n} upgrades=${JSON.stringify(p.up)} expected spot #${best.i + 1} -> ${r.parked ? 'PARKED spot #' + (r.spot + 1) : 'FAILED ' + r.failed}, coins +${coins1 - coins0}`);
   if (!r.parked || r.spot !== best.i) ok = false;
 }
+// auto-fail: idle run should end by itself and auto-start a fresh run
+await page.evaluate(() => { window.__pp.save.bestSpot = 0; window.__pp.playLaunch(777, []); });
+const af = await page.waitForFunction(() => window.__pp.scene?.sim?.failed, null, { timeout: 30000 }).then(h => h.jsonValue());
+const tFail = await page.evaluate(() => window.__pp.scene.sim.time()); await page.waitForTimeout(400); await page.screenshot({ path: 'shots/launch_autofail.png' });
+await page.waitForFunction(() => window.__pp.scene?.seed !== 777 && window.__pp.scene?.sim?.frame > 5, null, { timeout: 8000 });
+console.log(`idle run auto-failed with "${af}" at ${tFail.toFixed(1)}s and the next run auto-started`);
 // shop: give coins, buy one
 await page.evaluate(() => { window.__pp.save.coins = 500; window.__pp.save.up = {}; window.__pp.openShop(); });
 await page.waitForTimeout(300); await page.screenshot({ path: 'shots/shop.png' });

@@ -28,7 +28,7 @@ const KINDS = ['sedan', 'suv', 'van', 'truck', 'mini'];
 const SZ = { sedan: [118, 40], suv: [124, 58], van: [140, 70], truck: [150, 64], mini: [96, 36] };
 export const SPOT_VALUES = [10, 18, 30, 45, 65, 90, 125, 170, 230, 310];
 
-export function genLot(seed, up = {}, daily = false) {
+export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   const R = rng(seed), T = tuneFrom(up), gy = 620;
   const solids = [], spots = [], pits = [];
   // ramp: start deck, curved drop, kicker
@@ -66,25 +66,39 @@ export function genLot(seed, up = {}, daily = false) {
   for (const [a, b] of sortedPits) { solids.push({ t: 'ground', r: [gx, gy, a - gx, 120] }); solids.push({ t: 'ground', r: [a, gy + 200, b - a, 40] }); gx = b; }
   solids.push({ t: 'ground', r: [gx, gy, x + 600 - gx, 120] });
   solids.push({ t: 'wall', r: [x + 600, -600, 20, 1600] });
-  // rivals: head for the best spots; faster as you progress
+  // lot behaviours mixed in (not on spot #1 so the first spot is always learnable)
+  const lotcars = [];
+  for (let i = 1; i < nSpots; i++) {
+    const roll = R(), sp = spots[i], cx = sp.x + sp.w / 2, k = KINDS[Math.floor(R() * 2)];
+    const [w, h] = SZ[k];
+    if (roll < 0.16) lotcars.push({ spot: i, beh: 'pullout', kind: k, x: cx, y: gy - 20, w: Math.min(sp.w - 6, 96), h: 36 });
+    else if (roll < 0.28) lotcars.push({ spot: i, beh: 'late', at: 200 + Math.floor(R() * 300), kind: k, x: cx, y: gy - 20, w: Math.min(sp.w - 6, 96), h: 36 });
+    else if (roll < 0.42) lotcars.push({ spot: i, beh: 'blocker', kind: 'mini', x: cx, y: gy - 100, w: 96, h: 36 });
+    else if (roll < 0.56) lotcars.push({ spot: i, beh: 'snatch', kind: 'sedan', x: cx + 420, y: gy - 300, w: Math.min(sp.w - 6, 96), h: 36 });
+  }
+  // rivals: start with you on their own ramp lane, race for the spots just past your best
   const prog = progressOf(up), nR = 2 + Math.round(prog * 3);
-  const speed = 6.2 + prog * 4.2;
-  const rivals = [];
+  const vr = 9 + prog * 5, vf = 10 + prog * 4.5, rivals = [];
+  const base = Math.max(1, Math.min(nSpots - 2, bestSpot));
   for (let j = 0; j < nR; j++) {
-    const spot = nSpots - 1 - j * 2 + (j > 0 && R() < 0.5 ? 1 : 0);
-    const sx = spots[Math.max(0, Math.min(nSpots - 1, spot))].x;
-    rivals.push({ spot: Math.max(0, Math.min(nSpots - 1, spot)), startX: 1200 + R() * 300, arrive: Math.round(60 + (sx - 1200) / speed + R() * 50), kind: 'thief' });
+    let spot = Math.min(nSpots - 1, base + j + (R() < 0.4 ? 1 : 0));
+    if (rivals.some(r => r.spot === spot)) spot = Math.min(nSpots - 1, spot + 1);
+    const path = []; let rx = 60, v = 0, f = 0;
+    while (rx < lipX) { v = Math.min(vr + j * 0.4, v + 0.22); rx += v; f++; path.push(Math.round(rx)); }
+    const sx = spots[spot].x + spots[spot].w / 2;
+    rivals.push({ spot, lane: j, path, lipF: f, arrive: f + Math.ceil((sx - lipX) / (vf - j * 0.3)) + 25 + (spot <= 2 ? 70 : 0) });
   }
   return { id: 'launch', mode: 'launch', daily, seed, name: daily ? 'Daily Lot' : 'Lot #' + (seed % 10000),
     hint: 'Hold ▶ + BOOST down the ramp, fly, flip, park far. Rivals are coming for the best spots!',
     w: x + 620, h: 900, start: { x: 60, y: 120 }, fuel: T.fuel, tune: T.tune, mult: T.mult, par: [99, 99], sky: Math.floor(R() * 4),
-    ramp: [prof], solids, spots, pits, rivals, lipX, lipY, timeLimit: 40 };
+    ramp: [prof], prof, solids, spots, pits, rivals, lotcars, lipX, lipY, timeLimit: 40 };
 }
 
 export function payout(L, S) {
   const style = S.style;
   const dist = Math.max(0, Math.floor((S.maxX - L.lipX) / 60));
-  if (!S.parked) return { total: Math.round(dist * L.mult), dist, spot: 0, style: 0, stolen: 0 };
+  const flips = S.flipBank || 0;
+  if (!S.parked) return { total: Math.round((dist + flips) * L.mult), dist, flips, spot: 0, style: 0, stolen: 0 };
   const spot = L.spots[S.parkedSpot].value, st = Math.round(style / 10), stolen = S.stolen ? Math.round(spot * 0.5) : 0, clean = S.bumps ? 0 : 5;
-  return { total: Math.round((spot + st + stolen + clean + dist) * L.mult), dist, spot, style: st, stolen, clean };
+  return { total: Math.round((spot + st + stolen + clean + dist + flips) * L.mult), dist, flips, spot, style: st, stolen, clean };
 }

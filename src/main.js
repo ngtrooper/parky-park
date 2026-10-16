@@ -105,7 +105,7 @@ class Play extends Phaser.Scene {
   init(data) { this.mode = data.mode || 'puzzle'; this.daily = !!data.daily; this.seed = data.seed; this.levelId = data.id || 1; this.replay = data.replay || null; }
   create() {
     makeArt(this);
-    const L = this.L = this.mode === 'launch' ? genLot(this.seed, save.up, this.daily) : LEVELS.find(l => l.id === this.levelId);
+    const L = this.L = this.mode === 'launch' ? genLot(this.seed, save.up, this.daily, save.bestSpot) : LEVELS.find(l => l.id === this.levelId);
     this.isLaunch = this.mode === 'launch';
     this.sim = createSim(L);
     this.acc = 0; this.paused = false; this.done = false; this.ghostRec = [];
@@ -131,6 +131,7 @@ class Play extends Phaser.Scene {
       this.spotLabels = L.spots.map(sp => this.add.text(sp.x + sp.w / 2, sp.y - 92, '🪙' + sp.value, { font: 'bold 16px monospace', color: '#ffd23f', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(2));
       this.rivalGfx = L.rivals.map((r, i) => this.add.image(r.startX, 0, 'p_thief').setDisplaySize(84, 40).setTint([0xffffff, 0xff9e9e, 0x9effc0, 0x9ec8ff, 0xffe08a][i % 5]).setDepth(3));
       this.takenGfx = {};
+      this.lotGfx = this.sim.lot.map(o => this.add.image(o.x, o.y, 'p_' + o.kind).setDisplaySize(o.w, o.h + 4).setDepth(2));
     }
     this.moverGfx = this.sim.movers.map(m => {
       if (m.t === 'thief') return this.add.image(m.b.position.x, m.b.position.y, 'p_thief').setDisplaySize(m.r[2], m.r[3]);
@@ -240,12 +241,16 @@ class Play extends Phaser.Scene {
       sfx.thud(vyBefore);
     }
     for (const e of S.events) {
-      if (e === 'flip') { this.toast(`FLIP${S.combo > 1 ? ' x' + S.combo : ''}! +${100 * S.combo}`); sfx.flip(S.combo); this.sparks.emitParticleAt(c.position.x, c.position.y, 10); }
+      if (e === 'flip') { this.toast(this.isLaunch ? `+FLIP ${S.airFlips > 1 ? 'x' + S.airFlips : ''}` : `FLIP${S.combo > 1 ? ' x' + S.combo : ''}! +${100 * S.combo}`); sfx.flip(S.combo); this.sparks.emitParticleAt(c.position.x, c.position.y, 10); }
       if (e === 'landed') { this.toast('STUCK THE LANDING!'); }
       if (e === 'gate') { this.gateGfx?.destroy(); this.gateTxt?.setText('OPEN!'); cam.flash(150, 255, 230, 120); }
       if (e === 'honk') { sfx.honk(); this.toast('HONK HONK'); }
       if (e === 'bump') sfx.bump();
       if (e === 'hop') { sfx.thud(4); this.dust.emitParticleAt(c.position.x, c.position.y + 10, 6); }
+      if (typeof e === 'string' && e.startsWith('flipland:')) { const [, n, amt] = e.split(':'); this.toast(`${['', 'FLIP', 'DOUBLE FLIP', 'TRIPLE FLIP'][n] || 'INSANE x' + n}! 🪙+${amt}`); sfx.park(Math.min(3, +n)); cam.flash(90, 255, 230, 120); }
+      if (e === 'bail') { this.toast('BAILED! flips lost'); sfx.bump(); }
+      if (typeof e === 'string' && e.startsWith('lot:')) { const b = e.split(':')[1]; this.toast({ pullout: 'SOMEONE IS LEAVING!', late: 'SPOT OPENING…', snatch: 'SNATCHER INCOMING!' }[b] || ''); }
+      if (typeof e === 'string' && e.startsWith('open:')) { this.toast(`SPOT #${+e.slice(5) + 1} OPEN!`); sfx.flip(1); }
       if (e === 'stolen') { this.toast('STOLEN! +50%'); cam.shake(200, 0.01); }
       if (typeof e === 'string' && e.startsWith('taken:')) { const i = +e.slice(6); this.toast(`RIVAL TOOK 🪙${S.spots[i].value}`); sfx.honk(); }
       if (e === 'parked' && !this.done) this.onParked();
@@ -274,15 +279,23 @@ class Play extends Phaser.Scene {
       g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 67, 3, 14); g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 67, 9, 3); g.fillRect(sp.x + sp.w / 2 + 2, sp.y - 67, 3, 8); g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 61, 9, 3);
       if (this.spotLabels && taken) this.spotLabels[i].setText('TAKEN').setColor('#ff7a7a');
     });
-    // rivals fly in an arc toward their spot
-    if (this.isLaunch) S.rivals.forEach((r, i) => {
-      const im = this.rivalGfx[i], sp = S.spotRect(r.spot);
-      if (r.arrived) { if (r.blocked) im.setVisible(false); else im.setPosition(sp.x + sp.w / 2, sp.y - 20).setRotation(0); return; }
-      const t = Math.min(1, S.frame / r.arrive), x = r.startX + (sp.x + sp.w / 2 - r.startX) * t;
-      const y = sp.y - 20 - Math.sin(Math.PI * t) * 260 - (t < 0.97 ? 40 * (1 - t) : 0);
-      im.setPosition(x, y).setRotation(Math.sin(S.frame / 10 + i) * 0.08);
-      if (S.frame % 3 === 0 && t < 0.95) this.flame.emitParticleAt(x - 40, y + 10, 1);
-    });
+    // rivals race from the start: down the ramp (behind you), off the kicker, arcing to their spot
+    if (this.isLaunch) {
+      const L = this.L, prof = L.prof;
+      const yAt = x => { for (let i = 0; i < prof.length - 1; i++) if (x <= prof[i + 1][0]) { const [x1, y1] = prof[i], [x2, y2] = prof[i + 1]; return y1 + (y2 - y1) * (x - x1) / (x2 - x1); } return prof[prof.length - 1][1]; };
+      S.rivals.forEach((r, i) => {
+        const im = this.rivalGfx[i], sp = S.spotRect(r.spot);
+        if (r.arrived) { if (r.blocked) im.setVisible(false); else im.setPosition(sp.x + sp.w / 2, sp.y - 20).setRotation(0); return; }
+        if (S.frame < r.lipF) { const x = r.path[S.frame], x2 = r.path[Math.min(r.path.length - 1, S.frame + 1)];
+          im.setPosition(x, yAt(x) - 18 - r.lane * 3).setRotation(Math.atan2(yAt(x2 + 6) - yAt(x2 - 6), 12)); return; }
+        const t = (S.frame - r.lipF) / (r.arrive - r.lipF), tx = sp.x + sp.w / 2, ty = sp.y - 20;
+        const x = L.lipX + (tx - L.lipX) * t, y = L.lipY - 20 + (ty - L.lipY + 20) * t - Math.sin(Math.PI * t) * (200 + r.lane * 30);
+        im.setPosition(x, y).setRotation(Math.sin(S.frame / 10 + i) * 0.08);
+        if (S.frame % 3 === 0 && t < 0.95) this.flame.emitParticleAt(x - 40, y + 10, 1);
+      });
+      S.lot.forEach((o, i) => this.lotGfx[i].setVisible(!o.gone).setPosition(o.b.position.x, o.b.position.y));
+      S.spots.forEach((sp, i) => { if (!S.taken.has(i) && this.spotLabels[i].text === 'TAKEN') this.spotLabels[i].setText('🪙' + sp.value).setColor('#ffd23f'); });
+    }
     // hud
     if (!this.done) {
       const t = S.time();
@@ -292,7 +305,7 @@ class Play extends Phaser.Scene {
     }
     this.hFuel.style.width = Math.max(0, S.fuel / (this.L.fuel || 100) * 100) + '%';
     if (this.hBoost) this.hBoost.style.width = (S.boost / (this.L.tune.boostCap || 1) * 100) + '%';
-    this.hStyle.textContent = S.style ? `STYLE ${S.style}${S.combo ? '  combo x' + S.combo : ''}` : '';
+    if (this.isLaunch) this.hStyle.textContent = (S.flipBank ? `FLIPS 🪙${S.flipBank}` : '') + (S.airFlips ? `  in air: ${S.airFlips}` : ''); else this.hStyle.textContent = S.style ? `STYLE ${S.style}${S.combo ? '  combo x' + S.combo : ''}` : '';
   }
   onParked() {
     if (this.isLaunch) return this.launchResult();
@@ -327,12 +340,18 @@ class Play extends Phaser.Scene {
     const line = (k, v) => v ? `<div class="row"><span>${k}</span><b>+${v}</b></div>` : '';
     overlay = h(`<div><div class="stamp ${S.parked ? '' : 'fail'}">${S.parked ? (S.stolen ? 'STOLEN!' : 'PARKED!') : S.failed}</div><div class="panel p">
       ${S.parked ? `<div style="font-size:15px">Spot #${S.parkedSpot + 1} of ${L.spots.length}</div>` : `<div class="slip">PARKING DATE SLIPPED → <b>Q${(save.runs % 4) + 1} ${2028 + Math.floor(save.runs / 6)}</b></div>`}
-      <div class="rows">${line('Spot', p.spot)}${line('Distance', p.dist)}${line('Style', p.style)}${line('Stolen bonus', p.stolen)}${line('No dings', p.clean)}
+      <div class="rows">${line('Spot', p.spot)}${line('Distance', p.dist)}${line('Style', p.style)}${line('Flips', p.flips)}${line('Stolen bonus', p.stolen)}${line('No dings', p.clean)}
       ${L.mult > 1 ? `<div class="row"><span>Coin Magnet</span><b>x${L.mult.toFixed(1)}</b></div>` : ''}</div>
       <div class="t">🪙 +${p.total} &nbsp;·&nbsp; total 🪙 ${save.coins}</div>
       ${next ? `<div style="font-size:12px;opacity:.85">${save.coins >= next.c ? '✅ You can afford ' + next.u.name + '!' : 'Next upgrade: ' + next.u.name + ' at 🪙' + next.c}</div>` : ''}
       <div class="btns"><button class="main" data-a="r">↻ Run again (R/Enter)</button><button data-a="s">🛠 Shop</button><button data-a="m">Menu</button></div></div></div>`);
     overlay.querySelector('[data-a=r]').onclick = () => startLaunch(L.daily);
+    const cancel = () => { clearTimeout(this.autoT); const c = overlay?.querySelector('.auto'); if (c) c.remove(); };
+    overlay.querySelector('[data-a=s]').addEventListener('pointerdown', cancel); overlay.querySelector('[data-a=m]').addEventListener('pointerdown', cancel);
+    overlay.querySelector('.panel').addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') startLaunch(L.daily); });
+    if (!S.parked) { overlay.querySelector('.btns').insertAdjacentHTML('beforebegin', '<div class="auto" style="font-size:12px;opacity:.8">next run in 2.5s… (tap to go now)</div>');
+      this.autoT = setTimeout(() => { if (!shopEl && !menuEl && this.done && this.scene.isActive()) startLaunch(L.daily); }, 2500); }
+    this.events.once('shutdown', () => clearTimeout(this.autoT));
     overlay.querySelector('[data-a=s]').onclick = () => openShop({ daily: L.daily });
     overlay.querySelector('[data-a=m]').onclick = () => showMenu();
     ui.appendChild(overlay);

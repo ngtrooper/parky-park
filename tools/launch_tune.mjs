@@ -6,7 +6,7 @@ export function tryRun(L, i, opts = {}) {
   const P = makePilot(LL, { vmax: 14, kx: 0.03 }); const rec = [];
   let air = false;
   while (!S.parked && !S.failed) {
-    if (S.taken.has(i)) break;
+    if (S.taken.has(i) && !S.lot.some(o => o.spot === i && (o.beh === 'late' || o.beh === 'pullout') && !o.gone)) break;
     let inp;
     if (!air) { inp = { right: true, boost: true }; if (S.car.position.x > L.lipX - 10 && !S.grounded) air = true; }
     else { inp = P(S); if (S.car.position.x < cx - 600 && S.car.velocity.x < 12) inp.boost = true; }
