@@ -19,7 +19,7 @@ for (const seed of [11, 22, 33, 44, 55]) {
 }
 // cap: many rivals, everyone arrives; at most half the spots get taken, run doesn't fail from it
 const L = genLot(5, { boostCap: 6, boostPow: 6, air: 6, thrust: 6 }); const many = { ...L, rivals: L.spots.map((_, i) => ({ spot: i, lane: 0, path: [], lipF: 0, arrive: 30 + i })) };
-const S = createSim(many); for (let f = 0; f < 200; f++) S.step({});
+const S = createSim(many); for (let f = 0; f < 200; f++) S.step(f === 0 ? { spinL: true } : {});
 console.log('10 rivals all arrive -> spots taken:', S.taken.size, 'of', L.spots.length, '| failed:', S.failed);
 if (S.taken.size > L.spots.length / 2 || S.failed === 'ALL SPOTS TAKEN') ok = false;
 console.log(ok ? 'CLAIM TESTS PASS' : 'CLAIM TESTS FAIL'); process.exit(ok ? 0 : 1);

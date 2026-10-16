@@ -1,0 +1,14 @@
+import { chromium } from 'playwright'; import { genLot } from '../src/launch.js'; import { tryRun } from './launch_tune.mjs';
+const enc = i => (i.left ? 1 : 0) | (i.right ? 2 : 0) | (i.up ? 4 : 0) | (i.spinL ? 8 : 0) | (i.spinR ? 16 : 0) | (i.hop ? 32 : 0) | (i.boost ? 64 : 0);
+const up = { boostCap: 2, boostPow: 2, air: 2, thrust: 1 }, seed = 31;
+const L = genLot(seed, up, false, 2); const { rec } = tryRun(L, 4);
+const inputs = [...Array(75).fill(0), ...rec.map(enc)];
+const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const ctx = await b.newContext({ viewport: { width: 960, height: 540 }, recordVideo: { dir: 'shots/rvideo', size: { width: 960, height: 540 } } });
+const p = await ctx.newPage(); await p.goto(process.argv[2] || 'http://localhost:4173/'); await p.waitForFunction(() => window.__pp && document.querySelector('.menu'));
+await p.evaluate(u => { window.__pp.save.up = u; window.__pp.save.bestSpot = 2; }, up);
+await p.evaluate(([s, i]) => window.__pp.playLaunch(s, i), [seed, inputs]);
+await p.waitForTimeout(900); await p.screenshot({ path: 'shots/rivals_waiting.png' });
+await p.waitForTimeout(1300); await p.screenshot({ path: 'shots/rivals_go.png' });
+await p.waitForFunction(() => { const S = window.__pp.scene?.sim; return S && (S.parked || S.failed); }, null, { timeout: 40000 });
+await p.waitForTimeout(1500); await ctx.close(); await b.close();

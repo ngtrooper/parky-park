@@ -250,6 +250,7 @@ class Play extends Phaser.Scene {
       if (typeof e === 'string' && e.startsWith('flipland:')) { const [, n, amt] = e.split(':'); this.toast(`${['', 'FLIP', 'DOUBLE FLIP', 'TRIPLE FLIP'][n] || 'INSANE x' + n}! 🪙+${amt}`); sfx.park(Math.min(3, +n)); cam.flash(90, 255, 230, 120); }
       if (typeof e === 'string' && e.startsWith('bail')) { this.toast(`SLOPPY LANDING! 🪙+${e.split(':')[1] || 0}`); sfx.bump(); }
       if (typeof e === 'string' && e.startsWith('veer:')) { this.toast('BACK OFF! IT\'S MINE!'); sfx.honk(); cam.shake(150, 0.008); }
+      if (e === 'go' && this.isLaunch) { this.toast('GO!'); sfx.park(1); }
       if (e === 'kick') { cam.shake(120, 0.01); this.sparks.emitParticleAt(c.position.x, c.position.y + 10, 16); }
       if (typeof e === 'string' && e.startsWith('lot:')) { const b = e.split(':')[1]; this.toast({ pullout: 'SOMEONE IS LEAVING!', late: 'SPOT OPENING…', snatch: 'SNATCHER INCOMING!' }[b] || ''); }
       if (typeof e === 'string' && e.startsWith('open:')) { this.toast(`SPOT #${+e.slice(5) + 1} OPEN!`); sfx.flip(1); }
@@ -285,19 +286,35 @@ class Play extends Phaser.Scene {
     if (this.isLaunch) {
       const L = this.L, prof = L.prof;
       const yAt = x => { for (let i = 0; i < prof.length - 1; i++) if (x <= prof[i + 1][0]) { const [x1, y1] = prof[i], [x2, y2] = prof[i + 1]; return y1 + (y2 - y1) * (x - x1) / (x2 - x1); } return prof[prof.length - 1][1]; };
+      const rf = S.rf;
       S.rivals.forEach((r, i) => {
-        const im = this.rivalGfx[i], sp = S.spotRect(r.spot);
+        const im = this.rivalGfx[i], sp = S.spotRect(r.spot), tx = sp.x + sp.w / 2, ty = sp.y - 20;
+        if (rf < 0) { // waiting at the line, revving
+          const x = 60 - 30 - i * 26; im.setPosition(x, yAt(Math.max(-30, x)) - 18 - r.lane * 3 + (S.frame % 6 < 3 ? -1 : 1)).setRotation(0);
+          if (S.frame % 5 === i % 5) this.flame.emitParticleAt(x - 40, im.y + 8, 1); return; }
         if (r.arrived) {
-          if (r.blocked) { const k = (S.frame - r.blockedF) / 60; // comic veer-off: bounce up, spin, fly away
-            im.setPosition(sp.x + sp.w / 2 + k * 420, sp.y - 120 - k * 260 + Math.max(0, 40 - k * 200)).setRotation(k * 6).setVisible(k < 3); }
-          else im.setPosition(sp.x + sp.w / 2, sp.y - 20).setRotation(0);
+          if (r.blocked) { const k = (rf - r.blockedF) / 60;
+            im.setPosition(tx + k * 420, sp.y - 120 - k * 260 + Math.max(0, 40 - k * 200)).setRotation(k * 6).setVisible(k < 3); }
+          else im.setPosition(tx, ty).setRotation(0);
           return; }
-        if (S.frame < r.lipF) { const x = r.path[S.frame], x2 = r.path[Math.min(r.path.length - 1, S.frame + 1)];
-          im.setPosition(x, yAt(x) - 18 - r.lane * 3).setRotation(Math.atan2(yAt(x2 + 6) - yAt(x2 - 6), 12)); return; }
-        const t = (S.frame - r.lipF) / (r.arrive - r.lipF), tx = sp.x + sp.w / 2, ty = sp.y - 20;
-        const x = L.lipX + (tx - L.lipX) * t, y = L.lipY - 20 + (ty - L.lipY + 20) * t - Math.sin(Math.PI * t) * (200 + r.lane * 30);
-        im.setPosition(x, y).setRotation(Math.sin(S.frame / 10 + i) * 0.08);
-        if (S.frame % 3 === 0 && t < 0.95) this.flame.emitParticleAt(x - 40, y + 10, 1);
+        if (rf < r.lipF) { const x = r.path[rf], x2 = r.path[Math.min(r.path.length - 1, rf + 1)];
+          im.setPosition(x, yAt(x) - 18 - r.lane * 3).setRotation(x2 > x ? Math.atan2(yAt(x2 + 6) - yAt(x2 - 6), 12) : 0); return; }
+        const ft = rf - r.lipF, t = Math.min(1, ft / r.flight);
+        const aimX = r.mistake === 'overshoot' ? tx + 260 : tx;
+        let x = L.lipX + (aimX - L.lipX) * t, y = L.lipY - 20 + (ty - L.lipY + 20) * t - Math.sin(Math.PI * t) * r.arcH;
+        y += Math.sin(ft / r.wobF + r.phase) * r.wobA * Math.sin(Math.PI * t);
+        let rot = Math.sin(ft / 9 + r.phase) * 0.1 + (t > 0.15 && t < 0.75 ? ((t - 0.15) / 0.6) * Math.PI * 2 * r.flips : 0);
+        if (r.mistake === 'bail' && t > r.bailT) { const k = (t - r.bailT) * r.flight / 60; // tumbles out of the sky
+          x = L.lipX + (aimX - L.lipX) * r.bailT + k * 200; y = Math.min(sp.y - 20, L.lipY - 20 + (ty - L.lipY + 20) * r.bailT - Math.sin(Math.PI * r.bailT) * r.arcH + k * k * 500); rot = k * 9;
+          if (y >= sp.y - 21 && !r.crashed) { r.crashed = true; this.dust.emitParticleAt(x, y + 10, 14); this.toast('RIVAL BAILED! 😂'); }
+          im.setAlpha(r.crashed ? 0.5 : 1); }
+        else if (t >= 1) { const k = (ft - r.flight) / Math.max(1, r.arrive - r.lipF - r.flight); // post-landing correction
+          if (r.mistake === 'overshoot') x = aimX + (tx - aimX) * Math.min(1, k);
+          if (r.mistake === 'bounce') { x = tx - 60 * Math.sin(Math.PI * Math.min(1, k)); y = ty - Math.abs(Math.sin(Math.PI * 2 * Math.min(1, k))) * 70; }
+          else y = ty; }
+        else if (S.frame % 3 === 0) this.flame.emitParticleAt(x - 40, y + 10, 1);
+        if (t < 1 && Math.sin(ft / 7 + r.phase) > 0.8) this.flame.emitParticleAt(x, y + 16, 1); // little thrust corrections
+        im.setPosition(x, y).setRotation(rot);
       });
       S.lot.forEach((o, i) => this.lotGfx[i].setVisible(!o.gone).setPosition(o.b.position.x, o.b.position.y));
       S.spots.forEach((sp, i) => { if (!S.taken.has(i) && this.spotLabels[i].text === 'TAKEN') this.spotLabels[i].setText('🪙' + sp.value).setColor('#ffd23f'); });

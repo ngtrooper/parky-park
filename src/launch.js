@@ -75,19 +75,31 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
     if (roll < 0.16) lotcars.push({ spot: i, beh: 'pullout', kind: k, x: cx, y: gy - 20, w: Math.min(sp.w - 6, 96), h: 36 });
     else if (roll < 0.28) lotcars.push({ spot: i, beh: 'late', at: 200 + Math.floor(R() * 300), kind: k, x: cx, y: gy - 20, w: Math.min(sp.w - 6, 96), h: 36 });
     else if (roll < 0.42) lotcars.push({ spot: i, beh: 'blocker', kind: 'mini', x: cx, y: gy - 100, w: 96, h: 36 });
-    else if (roll < 0.5 && i - lastSnatch > 2 && (lastSnatch = i)) lotcars.push({ spot: i, beh: 'snatch', kind: 'sedan', x: cx + 420, y: gy - 300, w: Math.min(sp.w - 6, 96), h: 36 });
+    else if (roll < 0.5 && i >= 4 && i - lastSnatch > 2 && (lastSnatch = i)) lotcars.push({ spot: i, beh: 'snatch', kind: 'sedan', x: cx + 420, y: gy - 300, w: Math.min(sp.w - 6, 96), h: 36 });
   }
   // rivals: start with you on their own ramp lane, race for the spots just past your best
   const prog = progressOf(up), nR = Math.min(4, 2 + Math.round(prog * 2));
   const vr = 9 + prog * 5, vf = 10 + prog * 4.5, rivals = [];
   const base = Math.max(1, Math.min(nSpots - 2, bestSpot));
+  const PERS = ['cautious', 'reckless', 'showoff'];
   for (let j = 0; j < nR; j++) {
-    let spot = Math.min(nSpots - 1, base + j + (R() < 0.4 ? 1 : 0));
-    if (rivals.some(r => r.spot === spot)) spot = Math.min(nSpots - 1, spot + 1);
+    const pers = PERS[Math.floor(R() * 3)];
+    // weighted target: mostly just past your best, sometimes greedy (far) or lazy (near)
+    const w = R(); let spot = base + j + (w < 0.2 ? -1 : w > 0.8 ? 2 : 0) + (pers === 'reckless' ? 1 : 0);
+    spot = Math.max(1, Math.min(nSpots - 1, spot));
+    while (rivals.some(r => r.spot === spot) && spot < nSpots - 1) spot++;
+    const spd = { cautious: 0.85, reckless: 1.15, showoff: 1 }[pers] * (0.9 + R() * 0.2);
+    const hes = Math.floor(R() * (pers === 'cautious' ? 45 : 18)); // hesitation at GO
     const path = []; let rx = 60, v = 0, f = 0;
-    while (rx < lipX) { v = Math.min(vr + j * 0.4, v + 0.22); rx += v; f++; path.push(Math.round(rx)); }
+    for (let k = 0; k < hes; k++) { path.push(60); f++; }
+    while (rx < lipX) { v = Math.min((vr + j * 0.4) * spd, v + 0.22 * spd); rx += v; f++; path.push(Math.round(rx)); }
     const sx = spots[spot].x + spots[spot].w / 2;
-    rivals.push({ spot, lane: j, path, lipF: f, arrive: f + Math.ceil((sx - lipX) / (vf - j * 0.3)) + 25 + (spot <= 2 ? 70 : 0) });
+    let flight = Math.ceil((sx - lipX) / ((vf - j * 0.3) * spd)) + 25;
+    const m = R(), mistake = m < (pers === 'reckless' ? 0.3 : 0.12) ? 'overshoot' : m < (pers === 'reckless' ? 0.45 : 0.2) ? 'bounce' : m < (pers === 'reckless' ? 0.55 : 0.25) ? 'bail' : null;
+    const extra = mistake === 'overshoot' ? 70 : mistake === 'bounce' ? 50 : 0;
+    rivals.push({ spot, lane: j, pers, path, lipF: f, flight, arrive: f + flight + extra + (spot <= 2 ? 70 : 0), mistake, never: mistake === 'bail',
+      bailT: 0.35 + R() * 0.4, arcH: 140 + R() * 220 * (pers === 'cautious' ? 0.6 : 1.2), wobA: 4 + R() * (pers === 'reckless' ? 26 : 10), wobF: 6 + R() * 10,
+      flips: pers === 'showoff' ? 1 + Math.floor(R() * 3) : R() < 0.15 ? 1 : 0, phase: R() * 6 });
   }
   return { id: 'launch', mode: 'launch', daily, seed, name: daily ? 'Daily Lot' : 'Lot #' + (seed % 10000),
     hint: 'Hold ▶ + BOOST down the ramp, fly, flip, park far. Rivals are coming for the best spots!',

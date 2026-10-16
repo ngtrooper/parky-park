@@ -68,11 +68,12 @@ export function createSim(L) {
     S.events.length = 0;
     if (S.parked || S.failed) { Engine.update(engine, DT); S.frame++; return; }
     const t = S.frame;
+    if (!S.started && (inp.left || inp.right || inp.up || inp.hop || inp.boost || inp.spinL || inp.spinR)) { S.started = true; S.startF = t; S.events.push('go'); }
+    S.rf = S.started ? t - S.startF : -1; // race clock: rivals and timers wait for your first input
     const a = car.angle, ux = Math.sin(a), uy = -Math.cos(a), fx = Math.cos(a), fy = Math.sin(a);
     const m = car.mass;
     const fuelRate = L.fuelRate || 1;
     S.thrusting = { up: false, l: false, r: false };
-    S.events.length = 0;
     // lift (thrusters along car "up")
     if (inp.up && S.fuel > 0) { Body.applyForce(car, car.position, { x: ux * LIFT * T.lift * m, y: uy * LIFT * T.lift * m });
       S.fuel -= 0.2 * fuelRate; S.thrusting.up = true; }
@@ -133,7 +134,7 @@ export function createSim(L) {
       if (o.gone) continue;
       const sp = S.spotRect(o.spot), cx = sp.x + sp.w / 2, see = car.position.x > sp.x - 950;
       if (o.beh === 'blocker') { Body.setPosition(o.b, { x: cx + Math.sin(t / 45) * 150, y: sp.y - 100 + Math.sin(t / 23) * 20 }, true); continue; }
-      if (o.phase === 'wait' && ((o.beh === 'late' && t >= o.at) || (o.beh !== 'late' && see))) { o.phase = 'go'; o.f = 0; S.events.push('lot:' + o.beh + ':' + o.spot); }
+      if (o.phase === 'wait' && ((o.beh === 'late' && S.rf >= o.at) || (o.beh !== 'late' && see))) { o.phase = 'go'; o.f = 0; S.events.push('lot:' + o.beh + ':' + o.spot); }
       if (o.phase !== 'go') continue;
       o.f++;
       if (o.beh === 'pullout' || o.beh === 'late') {          // lifts off and flies away, freeing the spot
@@ -206,7 +207,7 @@ export function createSim(L) {
     const slow = Math.hypot(car.velocity.x - rel.x, car.velocity.y - rel.y) < 1.0;
     if (inside && g && slow) { S.parkHold++; if (S.parkHold >= 18) { S.parked = true; S.parkedSpot = which;
       const r = S.rivals.find(r => r.spot === which && !r.arrived);
-      const rb = S.rivals.find(r => r.spot === which && (r.blocked || (!r.arrived && r.arrive - S.frame < 120)));
+      const rb = S.rivals.find(r => r.spot === which && (r.blocked || (!r.arrived && !r.never && r.arrive - S.rf < 120)));
       if (rb || S.lot.some(o => o.spot === which && o.beh === 'snatch' && o.phase === 'go')) { S.stolen = true; S.events.push('stolen'); }
       S.events.push('parked'); } } else S.parkHold = 0;
     // player claim: being in or right over a free spot reserves it (rivals veer off)
@@ -217,18 +218,18 @@ export function createSim(L) {
     }
     if (S.parked) S.claimed = S.parkedSpot;
     // rivals claim spots when they arrive, unless you're claiming it, or too few would be left free
-    for (const r of S.rivals) if (!r.arrived && S.frame >= r.arrive) {
+    for (const r of S.rivals) if (!r.arrived && !r.never && S.rf >= r.arrive) {
       r.arrived = true;
       const free = SPOTS.length - S.taken.size;
-      if (S.claimed === r.spot || (S.parked && S.parkedSpot === r.spot)) { r.blocked = true; r.blockedF = S.frame; S.events.push('veer:' + r.spot); continue; }
-      if (free <= Math.max(3, Math.ceil(SPOTS.length / 2))) { r.blocked = true; r.blockedF = S.frame; continue; }
+      if (S.claimed === r.spot || (S.parked && S.parkedSpot === r.spot)) { r.blocked = true; r.blockedF = S.frame - S.startF; S.events.push('veer:' + r.spot); continue; }
+      if (free <= Math.max(3, Math.ceil(SPOTS.length / 2))) { r.blocked = true; r.blockedF = S.frame - S.startF; continue; }
       if (S.taken.has(r.spot)) { r.blocked = true; continue; }
       S.taken.add(r.spot); const sp = S.spotRect(r.spot);
       const rb = Bodies.rectangle(sp.x + sp.w / 2, sp.y - 20, Math.min(sp.w - 8, 110), 40, { isStatic: true }); rb.kind = 'car';
       Composite.add(world, rb); S.rivalsOut.push({ r, b: rb }); S.events.push('taken:' + r.spot);
     }
     S.maxX = Math.max(S.maxX, car.position.x);
-    if (LA && !S.parked) {
+    if (LA && !S.parked && S.started) {
       const any = inp.left || inp.right || inp.up || inp.hop || inp.spinL || inp.spinR || inp.boost;
       const sp = Math.hypot(car.velocity.x, car.velocity.y);
       S.idleF = any || !g || S.inSpot ? 0 : S.idleF + 1;
