@@ -1,0 +1,90 @@
+// LAUNCH mode: procedural lots, upgrades, rivals, economy.
+export function rng(seed) { let s = seed >>> 0 || 1; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+export const dailySeed = (d = new Date()) => +`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+
+export const UPGRADES = [
+  { k: 'boostCap', name: 'Boost Tank', desc: 'More boost to burn on the ramp', base: 30, max: 6 },
+  { k: 'boostPow', name: 'Boost Power', desc: 'Higher top speed while boosting', base: 40, max: 6 },
+  { k: 'air', name: 'Air Tank', desc: 'More thruster fuel in the air', base: 35, max: 6 },
+  { k: 'thrust', name: 'Thrusters', desc: 'Stronger lift and air-steer', base: 45, max: 6 },
+  { k: 'spin', name: 'Spin Gyro', desc: 'Faster flips = more style', base: 25, max: 4 },
+  { k: 'grip', name: 'Tire Grip', desc: 'Quicker acceleration and braking', base: 25, max: 4 },
+  { k: 'mult', name: 'Coin Magnet', desc: '+20% coins per level', base: 80, max: 5 },
+];
+export const costOf = (u, lvl) => Math.round(u.base * Math.pow(1.75, lvl) / 5) * 5;
+
+export function tuneFrom(up) {
+  const g = k => up[k] || 0;
+  return {
+    tune: { boostCap: 30 + 20 * g('boostCap'), boostPow: 2 + 1.5 * g('boostPow'), lift: 1 + 0.07 * g('thrust'), steer: 1 + 0.25 * g('thrust'),
+      spin: 1 + 0.2 * g('spin'), grip: 1 + 0.25 * g('grip'), top: 9.5, drag: 0.022 - 0.0015 * g('thrust') },
+    fuel: 22 + 13 * g('air'),
+    mult: 1 + 0.2 * g('mult'),
+  };
+}
+export const progressOf = up => UPGRADES.reduce((a, u) => a + (up[u.k] || 0), 0) / UPGRADES.reduce((a, u) => a + u.max, 0);
+
+const KINDS = ['sedan', 'suv', 'van', 'truck', 'mini'];
+const SZ = { sedan: [118, 40], suv: [124, 58], van: [140, 70], truck: [150, 64], mini: [96, 36] };
+export const SPOT_VALUES = [10, 18, 30, 45, 65, 90, 125, 170, 230, 310];
+
+export function genLot(seed, up = {}, daily = false) {
+  const R = rng(seed), T = tuneFrom(up), gy = 620;
+  const solids = [], spots = [], pits = [];
+  // ramp: start deck, curved drop, kicker
+  const prof = [[-40, 140], [160, 140]];
+  for (let i = 1; i <= 14; i++) { const t = i / 14; prof.push([160 + 700 * t, 140 + 400 * (0.5 - 0.5 * Math.cos(Math.PI * t))]); }
+  const kick = 0.42 + R() * 0.1; // kicker steepness
+  for (let i = 1; i <= 6; i++) { const t = i / 6; prof.push([860 + 220 * t, 540 - 120 * kick * 2 * t * t]); }
+  const lipX = 1080, lipY = prof[prof.length - 1][1];
+  // lot
+  let x = 1180;
+  solids.push({ t: 'wall', r: [-60, -600, 20, 1600] });
+  const nSpots = 10;
+  for (let i = 0; i < nSpots; i++) {
+    const gap = 260 + i * 120 + R() * 160;
+    // stuff between spots: parked cars, cones, a pit sometimes
+    let cx = x, end = x + gap;
+    while (cx < end - 140) {
+      const roll = R();
+      if (roll < 0.55) { const k = KINDS[Math.floor(R() * KINDS.length)]; const [w, h] = SZ[k];
+        if (cx + w > end) break; solids.push({ t: 'car', kind: k, r: [cx, gy - h, w, h] }); cx += w + 4 + R() * 30; }
+      else if (roll < 0.7 && i > 1 && cx + 200 < end) { const pw = 120 + R() * 80; pits.push([cx, cx + pw, gy + 30]); solids.push({ t: 'pit', r: [cx, gy, pw, 200] }); cx += pw + 20; }
+      else if (roll < 0.85) { solids.push({ t: 'cone', r: [cx, gy - 22, 18, 22] }); cx += 40 + R() * 40; }
+      else cx += 60 + R() * 80;
+    }
+    x = end;
+    const w = Math.max(76, 118 - i * 4 - R() * 14);
+    // flanking cars so you have to drop in
+    const lk = KINDS[Math.floor(R() * KINDS.length)], rk = KINDS[Math.floor(R() * KINDS.length)];
+    solids.push({ t: 'car', kind: lk, r: [x, gy - SZ[lk][1], SZ[lk][0], SZ[lk][1]] }); x += SZ[lk][0];
+    spots.push({ x, y: gy, w, value: SPOT_VALUES[i] }); x += w;
+    solids.push({ t: 'car', kind: rk, r: [x, gy - SZ[rk][1], SZ[rk][0], SZ[rk][1]] }); x += SZ[rk][0] + 20;
+  }
+  // ground pieces with holes for pits
+  let gx = 900; const sortedPits = [...pits].sort((a, b) => a[0] - b[0]);
+  for (const [a, b] of sortedPits) { solids.push({ t: 'ground', r: [gx, gy, a - gx, 120] }); solids.push({ t: 'ground', r: [a, gy + 200, b - a, 40] }); gx = b; }
+  solids.push({ t: 'ground', r: [gx, gy, x + 600 - gx, 120] });
+  solids.push({ t: 'wall', r: [x + 600, -600, 20, 1600] });
+  // rivals: head for the best spots; faster as you progress
+  const prog = progressOf(up), nR = 2 + Math.round(prog * 3);
+  const speed = 6.2 + prog * 4.2;
+  const rivals = [];
+  for (let j = 0; j < nR; j++) {
+    const spot = nSpots - 1 - j * 2 + (j > 0 && R() < 0.5 ? 1 : 0);
+    const sx = spots[Math.max(0, Math.min(nSpots - 1, spot))].x;
+    rivals.push({ spot: Math.max(0, Math.min(nSpots - 1, spot)), startX: 1200 + R() * 300, arrive: Math.round(60 + (sx - 1200) / speed + R() * 50), kind: 'thief' });
+  }
+  return { id: 'launch', mode: 'launch', daily, seed, name: daily ? 'Daily Lot' : 'Lot #' + (seed % 10000),
+    hint: 'Hold ▶ + BOOST down the ramp, fly, flip, park far. Rivals are coming for the best spots!',
+    w: x + 620, h: 900, start: { x: 60, y: 120 }, fuel: T.fuel, tune: T.tune, mult: T.mult, par: [99, 99], sky: Math.floor(R() * 4),
+    ramp: [prof], solids, spots, pits, rivals, lipX, lipY, timeLimit: 40 };
+}
+
+export function payout(L, S) {
+  const style = S.style;
+  const dist = Math.max(0, Math.floor((S.maxX - L.lipX) / 60));
+  if (!S.parked) return { total: Math.round(dist * L.mult), dist, spot: 0, style: 0, stolen: 0 };
+  const spot = L.spots[S.parkedSpot].value, st = Math.round(style / 10), stolen = S.stolen ? Math.round(spot * 0.5) : 0, clean = S.bumps ? 0 : 5;
+  return { total: Math.round((spot + st + stolen + clean + dist) * L.mult), dist, spot, style: st, stolen, clean };
+}

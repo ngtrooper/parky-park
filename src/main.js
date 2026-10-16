@@ -3,23 +3,25 @@ import { LEVELS } from './levels.js';
 import { createSim, starsFor, DT, CAR_W, CAR_H } from './sim.js';
 import { makeArt, SKIES } from './art.js';
 import { sfx } from './sfx.js';
+import { genLot, dailySeed, UPGRADES, costOf, payout } from './launch.js';
 
 // ---------- save ----------
-const SAVE_KEY = 'parkypark_v1';
-const save = Object.assign({ stars: {}, best: {}, slips: 0 }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'));
+const SAVE_KEY = "parkypark_v1";
+const save = Object.assign({ stars: {}, best: {}, slips: 0, coins: 0, up: {}, runs: 0, bestSpot: 0, daily: {} }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'));
 const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 const ghostKey = id => 'parkypark_ghost_' + id;
 
 // ---------- input ----------
-const input = { left: false, right: false, up: false, spinL: false, spinR: false, hop: false };
+const input = { left: false, right: false, up: false, spinL: false, spinR: false, hop: false, boost: false };
 const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', Space: 'up',
-  KeyQ: 'spinL', KeyZ: 'spinL', KeyE: 'spinR', KeyX: 'spinR', KeyS: 'hop', ArrowDown: 'hop', ShiftLeft: 'hop', ShiftRight: 'hop' };
+  KeyQ: 'spinL', KeyZ: 'spinL', KeyE: 'spinR', KeyX: 'spinR', KeyS: 'hop', ArrowDown: 'hop', ShiftLeft: 'boost', ShiftRight: 'boost', KeyB: 'boost' };
 addEventListener('keydown', e => {
   if (KEYMAP[e.code]) { input[KEYMAP[e.code]] = true; e.preventDefault(); }
   if (e.repeat) return;
   if (e.code === 'KeyR') game.scene.getScene('play')?.restartLevel();
   if (e.code === 'Enter' || e.code === 'KeyN') game.scene.getScene('play')?.next();
-  if (e.code === 'Escape') showMenu();
+  if (e.code === 'Escape') { if (shopEl) closeShop(); else showMenu(); }
+  if (e.code === 'Enter' && menuEl && !shopEl) { sfx.click(); startLaunch(); }
 });
 addEventListener('keyup', e => { if (KEYMAP[e.code]) input[KEYMAP[e.code]] = false; });
 addEventListener('blur', () => Object.keys(input).forEach(k => input[k] = false));
@@ -29,11 +31,11 @@ const ui = document.getElementById('ui');
 const h = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; };
 const fmt = t => t.toFixed(2) + 's';
 const starStr = n => '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i>';
-let hud, overlay, menuEl, touchEl;
+let hud, overlay, menuEl, touchEl, shopEl;
 
 function buildTouch() {
   touchEl = h(`<div class="touch p"><div><button data-k="left">◀</button><button data-k="right">▶</button></div>
-    <div><button data-k="spinL">⟲</button><button data-k="spinR">⟳</button><button data-k="hop">⤒</button><button data-k="up">▲</button></div></div>`);
+    <div><button data-k="spinL">⟲</button><button data-k="spinR">⟳</button><button data-k="hop">⤒</button><button data-k="boost">⚡</button><button data-k="up">▲</button></div></div>`);
   touchEl.querySelectorAll('button').forEach(b => {
     const k = b.dataset.k;
     const on = e => { e.preventDefault(); input[k] = true; b.classList.add('held'); };
@@ -46,32 +48,65 @@ function buildTouch() {
 
 function showMenu() {
   const sc = game.scene.getScene('play'); if (sc) sc.paused = true;
-  menuEl?.remove();
+  menuEl?.remove(); overlay?.remove(); hud && (hud.style.display = 'none');
   const total = Object.values(save.stars).reduce((a, b) => a + b, 0);
-  menuEl = h(`<div class="menu p"><h1>PARKY PARK</h1>
-    <div class="sub">The car can fly. Parking is still hard.<br>★ ${total} / ${LEVELS.length * 3}</div>
+  const ds = dailySeed();
+  menuEl = h(`<div class="menu p"><h1>SPOT THIEF</h1>
+    <div class="sub">Your car can fly. So can everyone else's. Take the spot first.</div>
+    <div class="modes"><button class="big main" data-a="launch">▶ LAUNCH<small>endless lots · coins · upgrades</small></button>
+      <button class="big" data-a="daily">📅 DAILY LOT<small>${save.daily[ds] ? 'best ' + save.daily[ds] + ' coins' : 'same lot for everyone today'}</small></button>
+      <button class="big" data-a="shop">🛠 SHOP<small>🪙 ${save.coins} coins</small></button></div>
+    <div class="sub" style="margin:6px 0 0">PUZZLE MODE · ★ ${total} / ${LEVELS.length * 3}</div>
     <div class="grid">${LEVELS.map((L, i) => {
       const locked = i > 0 && !save.stars[LEVELS[i - 1].id];
       return `<div class="lv ${locked ? 'locked' : ''}" data-id="${L.id}"><div class="n">${L.id}</div><div class="nm">${L.name}</div>
         <div class="s">${starStr(save.stars[L.id] || 0)}</div><div class="bt">${save.best[L.id] ? 'best ' + fmt(save.best[L.id]) : 'par ' + L.par[1] + 's'}</div></div>`;
     }).join('')}</div>
-    <div class="keys">◀ ▶ drive / air-steer &nbsp; S / ↓ / SHIFT hop (free) &nbsp; ▲ / W / SPACE thrusters &nbsp; Q / E spin, wheelie &amp; flip<br>R instant retry &nbsp; ENTER next &nbsp; ESC levels</div></div>`);
+    <div class="keys">◀ ▶ drive / air-steer &nbsp; SHIFT / B boost &nbsp; ▲ / W / SPACE thrusters &nbsp; S / ↓ hop &nbsp; Q / E spin &amp; flip<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
   menuEl.querySelectorAll('.lv').forEach(el => el.addEventListener('click', () => { sfx.click(); startLevel(+el.dataset.id); }));
+  menuEl.querySelector('[data-a=launch]').onclick = () => { sfx.click(); startLaunch(); };
+  menuEl.querySelector('[data-a=daily]').onclick = () => { sfx.click(); startLaunch(true); };
+  menuEl.querySelector('[data-a=shop]').onclick = () => { sfx.click(); openShop(); };
   ui.appendChild(menuEl);
 }
 function startLevel(id) {
-  menuEl?.remove(); menuEl = null;
-  const sc = game.scene.getScene('play');
-  sc.scene.restart({ id });
+  menuEl?.remove(); menuEl = null; closeShop();
+  game.scene.getScene('play').scene.restart({ id });
 }
+function startLaunch(daily = false, seed = null) {
+  menuEl?.remove(); menuEl = null; closeShop();
+  game.scene.getScene('play').scene.restart({ mode: 'launch', daily, seed: seed ?? (daily ? dailySeed() : Math.floor(Math.random() * 1e9)) });
+}
+function openShop(after) {
+  closeShop(); overlay?.remove(); hud && (hud.style.display = 'none');
+  const sc = game.scene.getScene('play'); if (sc) sc.paused = true;
+  const draw = () => {
+    shopEl.innerHTML = `<h2>🛠 PIT SHOP <span class="coins">🪙 ${save.coins}</span></h2><div class="ups">${UPGRADES.map(u => {
+      const l = save.up[u.k] || 0, c = costOf(u, l), maxed = l >= u.max;
+      return `<div class="up"><b>${u.name}</b><div class="pips">${'■'.repeat(l)}<i>${'■'.repeat(u.max - l)}</i></div><small>${u.desc}</small>
+        <button data-k="${u.k}" ${maxed || save.coins < c ? 'disabled' : ''}>${maxed ? 'MAX' : '🪙 ' + c}</button></div>`; }).join('')}</div>
+      <div class="btns"><button class="main" data-a="go">▶ Run again (Enter)</button><button data-a="menu">Menu</button></div>`;
+    shopEl.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+      const u = UPGRADES.find(x => x.k === b.dataset.k), l = save.up[u.k] || 0, c = costOf(u, l);
+      if (save.coins >= c && l < u.max) { save.coins -= c; save.up[u.k] = l + 1; persist(); sfx.park(2); draw(); }
+    });
+    shopEl.querySelector('[data-a=go]').onclick = () => startLaunch(after?.daily);
+    shopEl.querySelector('[data-a=menu]').onclick = () => { closeShop(); showMenu(); };
+  };
+  shopEl = h('<div class="shop p"></div>'); draw(); ui.appendChild(shopEl);
+  shopEl.addEventListener('keydown', e => e.stopPropagation());
+}
+function closeShop() { shopEl?.remove(); shopEl = null; }
+addEventListener('keydown', e => { if (shopEl && e.code === 'Enter') { e.stopImmediatePropagation(); startLaunch(); } }, true);
 
 // ---------- Play scene ----------
 class Play extends Phaser.Scene {
   constructor() { super('play'); }
-  init(data) { this.levelId = data.id || 1; this.replay = data.replay || null; }
+  init(data) { this.mode = data.mode || 'puzzle'; this.daily = !!data.daily; this.seed = data.seed; this.levelId = data.id || 1; this.replay = data.replay || null; }
   create() {
     makeArt(this);
-    const L = this.L = LEVELS.find(l => l.id === this.levelId);
+    const L = this.L = this.mode === 'launch' ? genLot(this.seed, save.up, this.daily) : LEVELS.find(l => l.id === this.levelId);
+    this.isLaunch = this.mode === 'launch';
     this.sim = createSim(L);
     this.acc = 0; this.paused = false; this.done = false; this.ghostRec = [];
     const [top, bot] = SKIES[L.sky];
@@ -83,6 +118,20 @@ class Play extends Phaser.Scene {
     this.add.tileSprite(0, 0, L.w + 400, 180, 'city1').setOrigin(0, 0).setTileScale(2).setScrollFactor(0.35, 0.6).setDepth(-8).setPosition(-100, L.h - 330);
     // solids
     for (const s of L.solids) this.drawSolid(s);
+    if (L.ramp) for (const poly of L.ramp) {
+      const g = this.add.graphics();
+      g.fillStyle(0x3a3d46, 1); g.beginPath(); g.moveTo(poly[0][0], poly[0][1]);
+      for (const [x, y] of poly) g.lineTo(x, y);
+      g.lineTo(poly[poly.length - 1][0], 1100); g.lineTo(poly[0][0], 1100); g.closePath(); g.fillPath();
+      g.lineStyle(6, 0x9aa0aa, 1); g.beginPath(); g.moveTo(poly[0][0], poly[0][1]); for (const [x, y] of poly) g.lineTo(x, y); g.strokePath();
+      g.lineStyle(3, 0xffd23f, 1); for (let i = 2; i < poly.length - 1; i += 2) { const [x1, y1] = poly[i], [x2, y2] = poly[i + 1]; g.lineBetween(x1, y1 + 10, (x1 + x2) / 2, (y1 + y2) / 2 + 10); }
+      this.add.text(L.lipX - 30, L.lipY - 60, '⚡ BOOST!', { font: 'bold 18px monospace', color: '#7fd3ff', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5);
+    }
+    if (this.isLaunch) {
+      this.spotLabels = L.spots.map(sp => this.add.text(sp.x + sp.w / 2, sp.y - 92, '🪙' + sp.value, { font: 'bold 16px monospace', color: '#ffd23f', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(2));
+      this.rivalGfx = L.rivals.map((r, i) => this.add.image(r.startX, 0, 'p_thief').setDisplaySize(84, 40).setTint([0xffffff, 0xff9e9e, 0x9effc0, 0x9ec8ff, 0xffe08a][i % 5]).setDepth(3));
+      this.takenGfx = {};
+    }
     this.moverGfx = this.sim.movers.map(m => {
       if (m.t === 'thief') return this.add.image(m.b.position.x, m.b.position.y, 'p_thief').setDisplaySize(m.r[2], m.r[3]);
       const g = this.add.tileSprite(m.b.position.x, m.b.position.y, m.r[2] / 2, m.r[3] / 2, 'concrete').setScale(2);
@@ -94,7 +143,7 @@ class Play extends Phaser.Scene {
       this.gateTxt = this.add.text(r[0] + r[2] / 2, r[1] - 16, 'FLIP TO OPEN', { font: 'bold 13px monospace', color: '#ffd23f', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5); }
     this.spotG = this.add.graphics().setDepth(1);
     // ghost
-    this.ghostData = JSON.parse(localStorage.getItem(ghostKey(L.id)) || 'null');
+    this.ghostData = this.isLaunch ? null : JSON.parse(localStorage.getItem(ghostKey(L.id)) || 'null');
     this.ghost = this.add.image(0, 0, 'car').setScale(2).setAlpha(0.35).setTintFill(0x9fd8ff).setVisible(!!this.ghostData).setDepth(4);
     // car
     this.carImg = this.add.image(L.start.x, L.start.y, 'car').setScale(2).setDepth(5);
@@ -109,7 +158,8 @@ class Play extends Phaser.Scene {
     // camera
     const cam = this.cameras.main;
     cam.setBounds(0, -200, L.w, L.h + 200);
-    cam.setZoom(Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1));
+    cam.setZoom(this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1));
+    if (this.isLaunch) cam.setFollowOffset(-180, 40);
     cam.startFollow(this.carImg, true, 0.12, 0.12);
     cam.setRoundPixels(false);
     this.buildHud();
@@ -126,25 +176,28 @@ class Play extends Phaser.Scene {
       for (let i = x + 20; i < x + w; i += 120) g.fillRect(i, y + 8, 40, 3);
     } else if (s.t === 'wall') this.add.tileSprite(x, y, w / 2, hh / 2, 'concrete').setOrigin(0).setScale(2);
     else if (s.t === 'car') this.add.image(x, y, 'p_' + s.kind).setOrigin(0).setDisplaySize(w, hh);
+    else if (s.t === 'pit') { const g = this.add.graphics(); g.fillStyle(0x16181f, 1); g.fillRect(x, y, w, hh); g.fillStyle(0xffd23f, 1);
+      for (let i = x; i < x + w; i += 24) g.fillRect(i, y, 12, 6); }
     else if (s.t === 'cone') this.add.image(x, y, 'cone').setOrigin(0).setDisplaySize(w, hh);
   }
   buildHud() {
     hud?.remove(); overlay?.remove(); overlay = null;
     const L = this.L;
-    hud = h(`<div><div class="hud"><div class="l">${L.id}. ${L.name}<small>${L.hint}</small>
-      <div class="fuel"><i></i></div><div class="style"></div></div>
+    hud = h(`<div><div class="hud"><div class="l">${L.mode === 'launch' ? '🚀 ' + L.name : L.id + '. ' + L.name}<small>${L.hint}</small>
+      <div class="fuel"><i></i></div>${L.mode === 'launch' ? '<div class="fuel boost"><i></i></div>' : ''}<div class="style"></div></div>
       <div style="text-align:right"><div class="timer">0.00</div><div class="pars"><span class="p2">★★ ${L.par[0]}s</span><span class="p3">★★★ ${L.par[1]}s</span></div>
-      <div class="pars"><span>${save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div></div></div>
+      <div class="pars"><span>${L.mode === 'launch' ? 'farthest spot: #' + save.bestSpot : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div></div></div>
       <div class="topbtns p"><button data-a="r">↻ R</button><button data-a="m">☰</button></div></div>`);
     hud.querySelector('[data-a=r]').onclick = () => this.restartLevel();
     hud.querySelector('[data-a=m]').onclick = () => showMenu();
     ui.insertBefore(hud, ui.firstChild);
-    this.hTimer = hud.querySelector('.timer'); this.hFuel = hud.querySelector('.fuel i'); this.hStyle = hud.querySelector('.style');
+    this.hTimer = hud.querySelector('.timer'); this.hFuel = hud.querySelector('.fuel i'); this.hBoost = hud.querySelector('.boost i'); this.hStyle = hud.querySelector('.style');
     this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3');
   }
-  restartLevel() { if (menuEl) return; this.scene.restart({ id: this.levelId }); }
+  restartLevel() { if (menuEl || shopEl) return; if (this.isLaunch) return startLaunch(this.daily); this.scene.restart({ id: this.levelId }); }
   next() {
-    if (menuEl || !this.done) return;
+    if (menuEl || shopEl || !this.done) return;
+    if (this.isLaunch) return startLaunch(this.daily);
     if (this.sim.failed) return this.restartLevel();
     const i = LEVELS.findIndex(l => l.id === this.levelId);
     if (i + 1 < LEVELS.length) this.scene.restart({ id: LEVELS[i + 1].id }); else showMenu();
@@ -158,7 +211,7 @@ class Play extends Phaser.Scene {
     while (this.acc >= DT && steps < 6) {
       this.acc -= DT; steps++;
       let inp = input;
-      if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32) }; }
+      if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32), boost: !!(v & 64) }; }
       const vyBefore = S.car.velocity.y, wasG = S.grounded;
       S.step(inp);
       if (!S.parked && !S.failed) this.ghostRec.push(Math.round(S.car.position.x), Math.round(S.car.position.y), Math.round(S.car.angle * 100));
@@ -193,6 +246,8 @@ class Play extends Phaser.Scene {
       if (e === 'honk') { sfx.honk(); this.toast('HONK HONK'); }
       if (e === 'bump') sfx.bump();
       if (e === 'hop') { sfx.thud(4); this.dust.emitParticleAt(c.position.x, c.position.y + 10, 6); }
+      if (e === 'stolen') { this.toast('STOLEN! +50%'); cam.shake(200, 0.01); }
+      if (typeof e === 'string' && e.startsWith('taken:')) { const i = +e.slice(6); this.toast(`RIVAL TOOK 🪙${S.spots[i].value}`); sfx.honk(); }
       if (e === 'parked' && !this.done) this.onParked();
       if (e === 'fail' && !this.done) this.onFail();
     }
@@ -205,27 +260,42 @@ class Play extends Phaser.Scene {
     S.carts.forEach((b, i) => this.cartGfx[i].setPosition(b.position.x, b.position.y).setRotation(b.angle));
     if (this.ghostData && !this.done) { const f = Math.min(S.frame, this.ghostData.length / 3 - 1) * 3;
       this.ghost.setPosition(this.ghostData[f], this.ghostData[f + 1]).setRotation(this.ghostData[f + 2] / 100); }
-    // spot
-    const sp = S.spotRect(), g = this.spotG; g.clear();
-    const col = S.parked ? 0x3ddc84 : S.inSpot ? 0xffd23f : 0xffffff;
-    const pulse = 0.35 + 0.25 * Math.sin(S.frame / 8);
-    g.fillStyle(col, S.inSpot ? 0.45 : pulse * 0.5); g.fillRect(sp.x, sp.y - 34, sp.w, 34);
-    g.fillStyle(col, 1); g.fillRect(sp.x, sp.y - 4, 4, 4); g.fillRect(sp.x + sp.w - 4, sp.y - 4, 4, 4); g.fillRect(sp.x, sp.y - 2, sp.w, 3);
-    g.lineStyle(3, col, 1); g.strokeRect(sp.x, sp.y - 34, sp.w, 34);
-    if (S.parkHold > 0 && !S.parked) { g.fillStyle(0x3ddc84, 1); g.fillRect(sp.x, sp.y - 40, sp.w * S.parkHold / 24, 5); }
-    // P sign
-    g.fillStyle(0x2f6fe0, 1); g.fillRect(sp.x + sp.w / 2 - 9, sp.y - 70, 18, 20); g.fillStyle(0xffffff, 1);
-    g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 67, 3, 14); g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 67, 9, 3); g.fillRect(sp.x + sp.w / 2 + 2, sp.y - 67, 3, 8); g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 61, 9, 3);
+    // spots
+    const g = this.spotG; g.clear();
+    S.spots.forEach((_, i) => {
+      const sp = S.spotRect(i), taken = S.taken.has(i), mine = S.parked && S.parkedSpot === i, here = S.inSpot && S.spotIdx === i;
+      const col = taken ? 0xff5a5a : mine ? 0x3ddc84 : here ? 0xffd23f : 0xffffff;
+      const pulse = 0.35 + 0.25 * Math.sin(S.frame / 8 + i);
+      g.fillStyle(col, here ? 0.45 : taken ? 0.25 : pulse * 0.5); g.fillRect(sp.x, sp.y - 34, sp.w, 34);
+      g.fillStyle(col, 1); g.fillRect(sp.x, sp.y - 2, sp.w, 3);
+      g.lineStyle(3, col, 1); g.strokeRect(sp.x, sp.y - 34, sp.w, 34);
+      if (here && S.parkHold > 0 && !S.parked) { g.fillStyle(0x3ddc84, 1); g.fillRect(sp.x, sp.y - 40, sp.w * S.parkHold / 24, 5); }
+      g.fillStyle(taken ? 0x8a2a2a : 0x2f6fe0, 1); g.fillRect(sp.x + sp.w / 2 - 9, sp.y - 70, 18, 20); g.fillStyle(0xffffff, 1);
+      g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 67, 3, 14); g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 67, 9, 3); g.fillRect(sp.x + sp.w / 2 + 2, sp.y - 67, 3, 8); g.fillRect(sp.x + sp.w / 2 - 5, sp.y - 61, 9, 3);
+      if (this.spotLabels && taken) this.spotLabels[i].setText('TAKEN').setColor('#ff7a7a');
+    });
+    // rivals fly in an arc toward their spot
+    if (this.isLaunch) S.rivals.forEach((r, i) => {
+      const im = this.rivalGfx[i], sp = S.spotRect(r.spot);
+      if (r.arrived) { if (r.blocked) im.setVisible(false); else im.setPosition(sp.x + sp.w / 2, sp.y - 20).setRotation(0); return; }
+      const t = Math.min(1, S.frame / r.arrive), x = r.startX + (sp.x + sp.w / 2 - r.startX) * t;
+      const y = sp.y - 20 - Math.sin(Math.PI * t) * 260 - (t < 0.97 ? 40 * (1 - t) : 0);
+      im.setPosition(x, y).setRotation(Math.sin(S.frame / 10 + i) * 0.08);
+      if (S.frame % 3 === 0 && t < 0.95) this.flame.emitParticleAt(x - 40, y + 10, 1);
+    });
     // hud
     if (!this.done) {
       const t = S.time();
       this.hTimer.textContent = t.toFixed(2);
-      this.hP3.classList.toggle('miss', t > this.L.par[1]); this.hP2.classList.toggle('miss', t > this.L.par[0]);
+      if (!this.isLaunch) { this.hP3.classList.toggle('miss', t > this.L.par[1]); this.hP2.classList.toggle('miss', t > this.L.par[0]); }
+      else { const d = Math.max(0, Math.floor((S.maxX - this.L.lipX) / 60)); this.hP2.textContent = '📏 ' + d + 'm'; this.hP3.textContent = '🪙 ' + save.coins; }
     }
-    this.hFuel.style.width = Math.max(0, S.fuel) + '%';
+    this.hFuel.style.width = Math.max(0, S.fuel / (this.L.fuel || 100) * 100) + '%';
+    if (this.hBoost) this.hBoost.style.width = (S.boost / (this.L.tune.boostCap || 1) * 100) + '%';
     this.hStyle.textContent = S.style ? `STYLE ${S.style}${S.combo ? '  combo x' + S.combo : ''}` : '';
   }
   onParked() {
+    if (this.isLaunch) return this.launchResult();
     const S = this.sim, L = this.L, t = S.time(); this.done = true;
     const stars = starsFor(L, t), prevBest = save.best[L.id];
     const newBest = !prevBest || t < prevBest;
@@ -244,7 +314,32 @@ class Play extends Phaser.Scene {
     ui.appendChild(overlay);
     requestAnimationFrame(() => overlay?.querySelector('.stamp').classList.add('go'));
   }
+  launchResult() {
+    const S = this.sim, L = this.L; this.done = true;
+    const p = payout(L, S); save.coins += p.total; save.runs++;
+    if (S.parked) save.bestSpot = Math.max(save.bestSpot, S.parkedSpot + 1);
+    if (L.daily) save.daily[L.seed] = Math.max(save.daily[L.seed] || 0, p.total);
+    persist();
+    const cam = this.cameras.main;
+    if (S.parked) { cam.shake(260, 0.012); cam.flash(120, 255, 255, 255); this.sparks.emitParticleAt(S.car.position.x, S.car.position.y - 10, 60); sfx.park(3); }
+    else { cam.shake(300, 0.016); sfx.fail(); }
+    const next = UPGRADES.map(u => ({ u, c: costOf(u, save.up[u.k] || 0), l: save.up[u.k] || 0 })).filter(x => x.l < x.u.max).sort((a, b) => a.c - b.c)[0];
+    const line = (k, v) => v ? `<div class="row"><span>${k}</span><b>+${v}</b></div>` : '';
+    overlay = h(`<div><div class="stamp ${S.parked ? '' : 'fail'}">${S.parked ? (S.stolen ? 'STOLEN!' : 'PARKED!') : S.failed}</div><div class="panel p">
+      ${S.parked ? `<div style="font-size:15px">Spot #${S.parkedSpot + 1} of ${L.spots.length}</div>` : `<div class="slip">PARKING DATE SLIPPED → <b>Q${(save.runs % 4) + 1} ${2028 + Math.floor(save.runs / 6)}</b></div>`}
+      <div class="rows">${line('Spot', p.spot)}${line('Distance', p.dist)}${line('Style', p.style)}${line('Stolen bonus', p.stolen)}${line('No dings', p.clean)}
+      ${L.mult > 1 ? `<div class="row"><span>Coin Magnet</span><b>x${L.mult.toFixed(1)}</b></div>` : ''}</div>
+      <div class="t">🪙 +${p.total} &nbsp;·&nbsp; total 🪙 ${save.coins}</div>
+      ${next ? `<div style="font-size:12px;opacity:.85">${save.coins >= next.c ? '✅ You can afford ' + next.u.name + '!' : 'Next upgrade: ' + next.u.name + ' at 🪙' + next.c}</div>` : ''}
+      <div class="btns"><button class="main" data-a="r">↻ Run again (R/Enter)</button><button data-a="s">🛠 Shop</button><button data-a="m">Menu</button></div></div></div>`);
+    overlay.querySelector('[data-a=r]').onclick = () => startLaunch(L.daily);
+    overlay.querySelector('[data-a=s]').onclick = () => openShop({ daily: L.daily });
+    overlay.querySelector('[data-a=m]').onclick = () => showMenu();
+    ui.appendChild(overlay);
+    requestAnimationFrame(() => overlay?.querySelector('.stamp').classList.add('go'));
+  }
   onFail() {
+    if (this.isLaunch) return this.launchResult();
     const S = this.sim; this.done = true;
     save.slips++; persist();
     const y0 = 2028 + Math.floor((save.slips - 1) / 2), q = ((save.slips - 1) % 4) + 1;
@@ -261,7 +356,7 @@ class Play extends Phaser.Scene {
   }
 }
 
-window.__pp = { LEVELS, save, startLevel, showMenu, play: (id, inputs) => { menuEl?.remove(); menuEl = null; game.scene.getScene('play').scene.restart({ id, replay: inputs }); } };
+window.__pp = { LEVELS, save, startLevel, startLaunch, openShop, showMenu, playLaunch: (seed, inputs) => { menuEl?.remove(); menuEl = null; closeShop(); game.scene.getScene('play').scene.restart({ mode: 'launch', seed, replay: inputs }); }, play: (id, inputs) => { menuEl?.remove(); menuEl = null; game.scene.getScene('play').scene.restart({ id, replay: inputs }); } };
 const game = new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, pixelArt: true, backgroundColor: '#12141c',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [Play] });
 buildTouch();
