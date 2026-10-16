@@ -1,0 +1,45 @@
+@font-face{font-family:px;src:local('Courier New')}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#12141c;overflow:hidden;font-family:"Trebuchet MS",Verdana,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
+#wrap{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}
+#game{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+#game canvas{image-rendering:pixelated}
+#ui{position:absolute;inset:0;pointer-events:none}
+#ui .p{pointer-events:auto}
+.hud{position:absolute;top:10px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;text-shadow:2px 2px 0 #000;font-weight:bold}
+.hud .l{font-size:18px}.hud .l small{display:block;font-size:12px;opacity:.85;font-weight:normal;max-width:46vw}
+.timer{font-size:34px;font-family:monospace;letter-spacing:1px}
+.pars{font-size:13px;margin-top:2px;display:flex;gap:8px;justify-content:flex-end}
+.pars span{background:#0008;padding:2px 7px;border-radius:4px}.pars .miss{opacity:.4;text-decoration:line-through}
+.fuel{width:150px;height:12px;background:#0009;border:2px solid #fff;border-radius:3px;margin-top:4px;overflow:hidden}
+.fuel i{display:block;height:100%;background:linear-gradient(90deg,#ff7a1a,#ffd23f)}
+.style{font-size:14px;color:#ffd23f;margin-top:3px}
+.stamp{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%) rotate(-8deg) scale(3);opacity:0;font-size:84px;font-weight:900;color:#3ddc84;border:8px solid #3ddc84;border-radius:14px;padding:0 24px;text-shadow:4px 4px 0 #0a3d22;box-shadow:inset 0 0 0 4px #0a3d22;letter-spacing:4px;background:#0b2a1aaa}
+.stamp.go{animation:stamp .35s cubic-bezier(.2,1.6,.4,1) forwards}
+.stamp.fail{white-space:nowrap;color:#ff5a5a;border-color:#ff5a5a;text-shadow:4px 4px 0 #4a0d0d;background:#2a0b0baa;font-size:52px}
+@keyframes stamp{to{transform:translate(-50%,-50%) rotate(-8deg) scale(1);opacity:1}}
+.panel{position:absolute;left:50%;top:66%;transform:translate(-50%,-50%);background:#1b1f2aee;border:3px solid #fff;border-radius:10px;padding:14px 20px;text-align:center;min-width:300px;box-shadow:6px 6px 0 #000}
+.stars{font-size:44px;letter-spacing:6px;color:#444}.stars b{color:#ffd23f;display:inline-block;animation:pop .3s backwards}
+.stars b:nth-child(2){animation-delay:.15s}.stars b:nth-child(3){animation-delay:.3s}
+@keyframes pop{from{transform:scale(0)}60%{transform:scale(1.5)}to{transform:scale(1)}}
+.panel .t{font-size:20px;font-family:monospace}.panel .nb{color:#ffd23f;font-weight:bold}
+.btns{display:flex;gap:10px;justify-content:center;margin-top:10px}
+button{font:bold 17px "Trebuchet MS",sans-serif;padding:9px 18px;border:3px solid #000;border-radius:8px;background:#fff;color:#111;box-shadow:3px 3px 0 #000;cursor:pointer}
+button.main{background:#3ddc84}button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000}
+.slip{font-size:15px;margin-top:6px;line-height:1.4}.slip s{opacity:.6}.slip b{color:#ffd23f}
+.menu{position:absolute;inset:0;background:linear-gradient(#2b3a67ee,#12141cf2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.menu h1{font-size:64px;font-weight:900;color:#fff;text-shadow:5px 5px 0 #ff7a1a,9px 9px 0 #000;letter-spacing:2px;transform:rotate(-3deg)}
+.menu .sub{opacity:.85;margin-bottom:8px;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(4,150px);gap:12px}
+.lv{background:#fff;color:#111;border:3px solid #000;border-radius:10px;padding:8px;box-shadow:4px 4px 0 #000;cursor:pointer;text-align:center}
+.lv .n{font-size:26px;font-weight:900}.lv .nm{font-size:12px;height:30px}.lv .s{color:#e0a800;font-size:18px;letter-spacing:2px}.lv .s i{color:#ccc;font-style:normal}
+.lv .bt{font-size:11px;font-family:monospace}.lv.locked{opacity:.4;pointer-events:none}
+.keys{font-size:13px;opacity:.8;margin-top:8px;text-align:center;line-height:1.6}
+.toast{position:absolute;left:50%;top:24%;transform:translateX(-50%);font-size:30px;font-weight:900;color:#ffd23f;text-shadow:3px 3px 0 #000;animation:toast 1s forwards}
+@keyframes toast{from{opacity:1;transform:translate(-50%,0) scale(1.4)}to{opacity:0;transform:translate(-50%,-50px) scale(1)}}
+.touch{position:absolute;bottom:14px;left:0;right:0;display:none;justify-content:space-between;padding:0 14px}
+.touch.on{display:flex}.touch div{display:flex;gap:12px}
+.touch button{width:70px;height:70px;font-size:28px;border-radius:50%;background:#ffffffcc;padding:0}
+.touch button.held{background:#ffd23f}
+.topbtns{position:absolute;top:100px;right:12px;display:flex;gap:6px}.topbtns button{font-size:13px;padding:4px 10px}
+@media (max-width:700px){.grid{grid-template-columns:repeat(2,140px)}.menu h1{font-size:44px}.stamp{font-size:54px}}
