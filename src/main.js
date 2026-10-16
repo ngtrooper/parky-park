@@ -4,6 +4,9 @@ import { createSim, starsFor, DT, CAR_W, CAR_H } from './sim.js';
 import { makeArt, SKIES } from './art.js';
 import { sfx } from './sfx.js';
 import { genLot, dailySeed, UPGRADES, costOf, payout } from './launch.js';
+import { showRewarded, onRunStart, isNative } from './ads.js';
+import { simpleInput as simpleMap } from './controls.js';
+const simpleInput = S => simpleMap(S, zone);
 
 // ---------- save ----------
 const SAVE_KEY = "parkypark_v1";
@@ -31,7 +34,35 @@ const ui = document.getElementById('ui');
 const h = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; };
 const fmt = t => t.toFixed(2) + 's';
 const starStr = n => '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i>';
-let hud, overlay, menuEl, touchEl, shopEl;
+let hud, overlay, menuEl, touchEl, shopEl, zonesEl, tutEl;
+const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || location.search.includes('touch');
+const zone = { l: false, r: false };
+function buildZones() {
+  zonesEl = h(`<div class="zones"><div class="zl"><span>◀ BRAKE · FLIP</span></div><div class="zr"><span>GO · BOOST · THRUST ▶</span></div></div>`);
+  const [zl, zr] = zonesEl.children, ptr = new Map();
+  const upd = () => { zone.l = [...ptr.values()].includes('l'); zone.r = [...ptr.values()].includes('r'); zl.classList.toggle('held', zone.l); zr.classList.toggle('held', zone.r); };
+  const side = e => (e.clientX < innerWidth / 2 ? 'l' : 'r');
+  zonesEl.addEventListener('pointerdown', e => { e.preventDefault(); ptr.set(e.pointerId, side(e)); upd(); });
+  zonesEl.addEventListener('pointermove', e => { if (ptr.has(e.pointerId)) { ptr.set(e.pointerId, side(e)); upd(); } });
+  const end = e => { ptr.delete(e.pointerId); upd(); };
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => zonesEl.addEventListener(t, end));
+  ui.insertBefore(zonesEl, ui.firstChild);
+}
+function setZones(on, btns = !on) { zonesEl?.classList.toggle('on', on && TOUCH); touchEl?.classList.toggle('on', btns && TOUCH); if (!on) { zone.l = zone.r = false; } }
+function showTutorial(done) {
+  const steps = [['Hold RIGHT', 'Hold the right side to race down the ramp and BOOST. In the air it fires your thrusters.', '▶'],
+    ['Hold LEFT', 'In the air, hold the left side to FLIP (flips = coins!). On the ground it brakes. Both sides = hop / hover.', '⟲'],
+    ['Steal the spot', 'Land in a parking spot and stop. Farther spots pay more. Get there before the rivals!', '🅿️']];
+  let k = 0;
+  const draw = () => { tutEl.innerHTML = `<div class="card"><div style="font-size:48px">${steps[k][2]}</div><h3>${steps[k][0]}</h3><div>${steps[k][1]}</div>
+    <div class="dots">${steps.map((_, j) => j === k ? '<b>●</b>' : '●').join('')}</div><div style="margin-top:8px;font-size:13px;opacity:.7">tap to continue</div></div>`; };
+  tutEl = h('<div class="tut p"></div>'); draw(); ui.appendChild(tutEl);
+  tutEl.addEventListener('pointerdown', e => { e.preventDefault(); k++; if (k >= steps.length) { tutEl.remove(); tutEl = null; save.tut = 1; persist(); done(); } else draw(); });
+}
+function goFullscreen() {
+  if (isNative() || !TOUCH || document.fullscreenElement) return;
+  document.documentElement.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
+}
 
 function buildTouch() {
   touchEl = h(`<div class="touch p"><div><button data-k="left">◀</button><button data-k="right">▶</button></div>
@@ -42,7 +73,7 @@ function buildTouch() {
     const off = e => { e.preventDefault(); input[k] = false; b.classList.remove('held'); };
     b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
   });
-  if (matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || location.search.includes('touch')) touchEl.classList.add('on');
+  
   ui.appendChild(touchEl);
 }
 
@@ -73,8 +104,9 @@ function startLevel(id) {
   menuEl?.remove(); menuEl = null; closeShop();
   game.scene.getScene('play').scene.restart({ id });
 }
-function startLaunch(daily = false, seed = null) {
-  menuEl?.remove(); menuEl = null; closeShop();
+async function startLaunch(daily = false, seed = null) {
+  menuEl?.remove(); menuEl = null; closeShop(); goFullscreen();
+  await onRunStart(); // interstitial pacing (between runs only)
   game.scene.getScene('play').scene.restart({ mode: 'launch', daily, seed: seed ?? (daily ? dailySeed() : Math.floor(Math.random() * 1e9)) });
 }
 function openShop(after) {
@@ -167,6 +199,11 @@ class Play extends Phaser.Scene {
     this.events.once('shutdown', () => { hud?.remove(); overlay?.remove(); });
     this.lastVy = 0;
     window.__pp.scene = this;
+    setZones(this.isLaunch);
+    if (this.isLaunch && !save.tut && !this.replay) { this.paused = true; showTutorial(() => { this.paused = false; }); }
+    this.applyZoom = () => { const W = this.scale.width, H = this.scale.height; this.cameras.main.setSize(W, H); const f = W < H ? Math.max((W / 960) * 1.35, H / (L.h + 380) / (this.isLaunch ? 0.62 : 0.8)) : Math.min(W / 960, H / 540);
+      this.cameras.main.setZoom((this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1)) * f); };
+    this.applyZoom(); this.scale.on('resize', this.applyZoom); this.events.once('shutdown', () => this.scale.off('resize', this.applyZoom));
   }
   drawSolid(s) {
     const [x, y, w, hh] = s.r;
@@ -212,6 +249,7 @@ class Play extends Phaser.Scene {
     while (this.acc >= DT && steps < 6) {
       this.acc -= DT; steps++;
       let inp = input;
+      if (this.isLaunch && TOUCH && (zone.l || zone.r)) inp = { ...input, ...simpleInput(S) };
       if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32), boost: !!(v & 64) }; }
       const vyBefore = S.car.velocity.y, wasG = S.grounded;
       S.step(inp);
@@ -351,7 +389,7 @@ class Play extends Phaser.Scene {
     requestAnimationFrame(() => overlay?.querySelector('.stamp').classList.add('go'));
   }
   launchResult() {
-    const S = this.sim, L = this.L; this.done = true;
+    const S = this.sim, L = this.L; this.done = true; setZones(false, false);
     const p = payout(L, S); save.coins += p.total; save.runs++;
     if (S.parked) save.bestSpot = Math.max(save.bestSpot, S.parkedSpot + 1);
     if (L.daily) save.daily[L.seed] = Math.max(save.daily[L.seed] || 0, p.total);
@@ -367,8 +405,14 @@ class Play extends Phaser.Scene {
       ${L.mult > 1 ? `<div class="row"><span>Coin Magnet</span><b>x${L.mult.toFixed(1)}</b></div>` : ''}</div>
       <div class="t">🪙 +${p.total} &nbsp;·&nbsp; total 🪙 ${save.coins}</div>
       ${next ? `<div style="font-size:12px;opacity:.85">${save.coins >= next.c ? '✅ You can afford ' + next.u.name + '!' : 'Next upgrade: ' + next.u.name + ' at 🪙' + next.c}</div>` : ''}
+      <div class="btns"><button class="adbtn" data-a="ad2">📺 Watch ad: 2x coins</button>${!S.parked && !S.revived ? '<button class="adbtn" data-a="adc">📺 Watch ad: continue</button>' : ''}</div>
       <div class="btns"><button class="main" data-a="r">↻ Run again (R/Enter)</button><button data-a="s">🛠 Shop</button><button data-a="m">Menu</button></div></div></div>`);
     overlay.querySelector('[data-a=r]').onclick = () => startLaunch(L.daily);
+    const ad2 = overlay.querySelector('[data-a=ad2]'), adc = overlay.querySelector('[data-a=adc]');
+    ad2.addEventListener('pointerdown', () => cancel()); adc?.addEventListener('pointerdown', () => cancel());
+    ad2.onclick = () => showRewarded(() => { save.coins += p.total; persist(); ad2.disabled = true; ad2.textContent = `✅ +${p.total} bonus coins`; this.toast('2x COINS!'); });
+    if (adc) adc.onclick = () => showRewarded(() => { save.coins -= p.total; persist(); overlay?.remove(); overlay = null; this.done = false; S.revive(); setZones(true); this.toast('BACK IN THE RACE!'); });
+    if (p.total <= 0) ad2.style.display = 'none';
     const cancel = () => { clearTimeout(this.autoT); const c = overlay?.querySelector('.auto'); if (c) c.remove(); };
     overlay.querySelector('[data-a=s]').addEventListener('pointerdown', cancel); overlay.querySelector('[data-a=m]').addEventListener('pointerdown', cancel);
     overlay.querySelector('.panel').addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') startLaunch(L.daily); });
@@ -400,6 +444,6 @@ class Play extends Phaser.Scene {
 
 window.__pp = { LEVELS, save, startLevel, startLaunch, openShop, showMenu, playLaunch: (seed, inputs) => { menuEl?.remove(); menuEl = null; closeShop(); game.scene.getScene('play').scene.restart({ mode: 'launch', seed, replay: inputs }); }, play: (id, inputs) => { menuEl?.remove(); menuEl = null; game.scene.getScene('play').scene.restart({ id, replay: inputs }); } };
 const game = new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, pixelArt: true, backgroundColor: '#12141c',
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [Play] });
-buildTouch();
+  scale: { mode: Phaser.Scale.RESIZE }, scene: [Play] });
+buildTouch(); buildZones();
 game.events.once('ready', () => { if (location.hash.startsWith('#l')) startLevel(+location.hash.slice(2)); else showMenu(); });

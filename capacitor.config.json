@@ -1,0 +1,8 @@
+{
+  "appId": "com.ngtrooper.spotthief",
+  "appName": "Spot Thief",
+  "webDir": "dist",
+  "android": { "backgroundColor": "#12141c" },
+  "ios": { "backgroundColor": "#12141c", "contentInset": "never" },
+  "plugins": { "AdMob": {} }
+}

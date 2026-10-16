@@ -41,7 +41,7 @@ button.main{background:#3ddc84}button:active{transform:translate(2px,2px);box-sh
 .touch.on{display:flex}.touch div{display:flex;gap:12px}
 .touch button{width:70px;height:70px;font-size:28px;border-radius:50%;background:#ffffffcc;padding:0}
 .touch button.held{background:#ffd23f}
-.topbtns{position:absolute;top:100px;right:12px;display:flex;gap:6px}.topbtns button{font-size:13px;padding:4px 10px}
+.topbtns{position:absolute;z-index:5;top:100px;right:12px;display:flex;gap:6px}.topbtns button{font-size:13px;padding:4px 10px}
 @media (max-width:700px){.grid{grid-template-columns:repeat(2,140px)}.menu h1{font-size:44px}.stamp{font-size:54px}}
 .fuel.boost i{background:linear-gradient(90deg,#2f6fe0,#7fd3ff)}
 .modes{display:flex;gap:12px;margin:4px 0}
@@ -54,3 +54,18 @@ button.big{font-size:22px;padding:10px 20px;min-width:200px}button.big small{dis
 .up button{font-size:14px;padding:5px}.up button:disabled{opacity:.4}
 .rows{margin:6px auto;min-width:220px}.row{display:flex;justify-content:space-between;font-size:14px}.row b{color:#ffd23f}
 @media (max-width:860px){.ups{grid-template-columns:repeat(2,170px)}.modes{flex-direction:column}}
+.mockad{position:absolute;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:50;text-align:center;font-size:22px}
+.mockad>div{background:#fff;color:#111;border:4px dashed #ff7a1a;border-radius:12px;padding:24px 40px}
+.adbtn{background:#ffd23f}
+.zones{position:absolute;inset:0;display:none;pointer-events:auto}
+.zones.on{display:flex}.zones div{flex:1;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(18px + env(safe-area-inset-bottom));font:bold 18px "Trebuchet MS";color:#fff;text-shadow:2px 2px 0 #000;opacity:.85}
+.zones div.held{background:#ffffff14}
+.zones .zl span,.zones .zr span{background:#0007;border:3px solid #fff;border-radius:40px;padding:12px 22px}
+.tut{position:absolute;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:40}
+.tut .card{background:#fff;color:#111;border:4px solid #000;border-radius:14px;box-shadow:6px 6px 0 #000;padding:18px 24px;max-width:min(520px,88vw);text-align:center;font-size:18px}
+.tut .card h3{font-size:26px;margin-bottom:6px}.tut .dots{margin-top:10px;letter-spacing:6px;color:#999}.tut .dots b{color:#ff7a1a}
+.hud{top:calc(10px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));right:calc(12px + env(safe-area-inset-right))}
+.topbtns{right:calc(12px + env(safe-area-inset-right))}
+.touch{bottom:calc(14px + env(safe-area-inset-bottom))}
+@media (max-height:500px){.hud .l small{display:none}.timer{font-size:26px}.panel{top:60%;padding:10px 14px}.stamp{font-size:56px}.menu h1{font-size:40px}.lv{padding:4px}.grid{gap:6px}.lv .nm{height:16px}}
+@media (orientation:portrait){.grid{grid-template-columns:repeat(2,140px)}.modes{flex-direction:column}.ups{grid-template-columns:repeat(2,160px)}}

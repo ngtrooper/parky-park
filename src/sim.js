@@ -72,7 +72,7 @@ export function createSim(L) {
     S.rf = S.started ? t - S.startF : -1; // race clock: rivals and timers wait for your first input
     const a = car.angle, ux = Math.sin(a), uy = -Math.cos(a), fx = Math.cos(a), fy = Math.sin(a);
     const m = car.mass;
-    const fuelRate = L.fuelRate || 1;
+    const fuelRate = (L.fuelRate || 1) * (inp.assist ? 0.65 : 1); // phone scheme is coarser: cheaper thrust
     S.thrusting = { up: false, l: false, r: false };
     // lift (thrusters along car "up")
     if (inp.up && S.fuel > 0) { Body.applyForce(car, car.position, { x: ux * LIFT * T.lift * m, y: uy * LIFT * T.lift * m });
@@ -109,6 +109,8 @@ export function createSim(L) {
     const sd = (inp.spinR ? 1 : 0) - (inp.spinL ? 1 : 0);
     if (sd && S.grounded) Body.setAngularVelocity(car, Math.max(-0.09, Math.min(0.09, car.angularVelocity + 0.012 * sd))); // wheelie / kick-up
     else if (sd && !S.grounded) Body.setAngularVelocity(car, Math.max(-MAXSPIN * T.spin, Math.min(MAXSPIN * T.spin, car.angularVelocity + SPIN * T.spin * sd)));
+    else if (!S.grounded && LA) { // gyro auto-level (launch): settle nose-level when you're not flipping
+      const e = norm(car.angle); Body.setAngularVelocity(car, car.angularVelocity * 0.9 - e * 0.012); }
     else if (!S.grounded) Body.setAngularVelocity(car, car.angularVelocity * 0.97);
     // self-righting assist when stuck on roof/side
     if (S.grounded && Math.cos(a) < 0.3 && Math.hypot(car.velocity.x, car.velocity.y) < 1.5) {
@@ -244,6 +246,13 @@ export function createSim(L) {
     if (car.position.y > L.h + 150 || car.position.x < -100 || car.position.x > L.w + 100) S.fail('LEFT THE LOT');
     if (S.frame > 60 * (L.timeLimit || 45)) S.fail('METER EXPIRED');
     if (S.fuel < 0) S.fuel = 0;
+  };
+  S.revive = () => { // rewarded 'continue': back upright above where you were, with some juice
+    if (!S.failed) return; S.failed = null; S.revived = true;
+    const x = Math.max(L.lipX + 100, car.position.x);
+    Body.setPosition(car, { x, y: (L.spots[0]?.y || 600) - 260 }); Body.setAngle(car, 0); Body.setVelocity(car, { x: 3, y: 0 }); Body.setAngularVelocity(car, 0);
+    S.fuel = Math.max(S.fuel, (L.fuel || 100) * 0.7); S.boost = Math.max(S.boost, (T.boostCap || 0) * 0.5);
+    S.idleF = S.slowF = S.roofF = 0; S.parkHold = 0;
   };
   S.fail = (why) => { if (!S.failed && !S.parked) { S.failed = why; S.events.push('fail'); } };
   S.time = () => S.frame / 60;

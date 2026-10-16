@@ -24,10 +24,10 @@ for (const [n, p] of plan.entries()) {
   if (!r.parked || r.spot !== best.i) ok = false;
 }
 // auto-fail: idle run should end by itself and auto-start a fresh run
-await page.evaluate(() => { window.__pp.save.bestSpot = 0; window.__pp.playLaunch(777, [2]); });
+await page.evaluate(() => { window.__pp.save.bestSpot = 0; window.__pp.save.tut = 1; window.__pp.playLaunch(777, [2]); });
 const af = await page.waitForFunction(() => window.__pp.scene?.sim?.failed, null, { timeout: 30000 }).then(h => h.jsonValue());
 const tFail = await page.evaluate(() => window.__pp.scene.sim.time()); await page.waitForTimeout(400); await page.screenshot({ path: 'shots/launch_autofail.png' });
-await page.waitForFunction(() => window.__pp.scene?.seed !== 777 && window.__pp.scene?.sim?.frame > 5, null, { timeout: 8000 });
+await page.waitForFunction(() => window.__pp.scene?.seed !== 777 && window.__pp.scene?.sim?.frame > 5, null, { timeout: 30000 });
 console.log(`idle run auto-failed with "${af}" at ${tFail.toFixed(1)}s and the next run auto-started`);
 // shop: give coins, buy one
 await page.evaluate(() => { window.__pp.save.coins = 500; window.__pp.save.up = {}; window.__pp.openShop(); });
