@@ -4,7 +4,8 @@ const { Engine, Bodies, Body, Composite, Vertices } = Matter;
 
 const norm = a => Math.atan2(Math.sin(a), Math.cos(a));
 export const GRAV_LA = 0.00085; // launch gravity: a bit floaty for fun, but you clearly fall
-export const LIFT_LA = 0.0013; // launch thrust: ~1.5x gravity, a fuel-limited hop not a hover
+export const LIFT_LA = 0.0022; // belly jets ~2.8x gravity: net ~1.8g up fresh, clearly stops a fall
+export const LIFT_LA_OLD = 0.0013; // launch thrust: ~1.5x gravity, a fuel-limited hop not a hover
 export const CAR_W = 60, CAR_H = 22, DT = 1000 / 60;
 const LIFT = 0.00175, STEER = 0.00055, DRIVE = 0.0018, HOP = 7.2, SPIN = 0.011, MAXSPIN = 0.22;
 
@@ -93,9 +94,13 @@ export function createSim(L) {
       if ((ax || ty) && S.fuel > 0) { const n = Math.hypot(ax, ty), k = LIFT_LA * T.lift * m;
         // Roadster-style RCS, relative to the car: up = bottom jets (lift along car-up), down = top jets (slam),
         // right/left = rear/front jets (push along the car's nose axis). Sideways a bit weaker, slam stronger.
-        const pf = ax / n * 0.5, pu = -ty / n * (ty > 0 ? 1.3 : 1);
-        Body.applyForce(car, car.position, { x: (fx * pf + ux * pu) * k, y: (fy * pf + uy * pu) * k });
-        S.fuel -= 0.45 * fuelRate * (n > 1 ? 1.2 : 1); S.thrust = { x: S.boosting ? bd : ax, y: ty, rel: 1 };
+        const pf = ax / n * 0.27, pu = -ty / n * (ty > 0 ? 0.7 : 1); // side/slam kept at their old absolute strength
+        // belly/roof jets: world-vertical while tilt < ~30deg (car-relative beyond that), plus mild self-levelling while lifting
+        const an = Math.atan2(Math.sin(a), Math.cos(a)), wv = Math.abs(an) < 0.52;
+        const vxU = wv ? 0 : ux, vyU = wv ? -1 : uy;
+        Body.applyForce(car, car.position, { x: (fx * pf + vxU * pu) * k, y: (fy * pf + vyU * pu) * k });
+        if (ty < 0 && !S.grounded && !inp.spinL && !inp.spinR && Math.abs(an) < 1.2) Body.setAngularVelocity(car, car.angularVelocity * 0.9 - an * 0.004);
+        S.fuel -= 0.3 * fuelRate * (n > 1 ? 1.2 : 1); S.thrust = { x: S.boosting ? bd : ax, y: ty, rel: 1 };
         if (ty < 0) S.thrusting.up = true; }
     } else {
       if (inp.tU && S.fuel > 0) { Body.applyForce(car, car.position, { x: ux * LIFT * T.lift * m, y: uy * LIFT * T.lift * m }); S.fuel -= 0.2 * fuelRate; S.thrusting.up = true; }

@@ -31,7 +31,7 @@ const KINDS = ['sedan', 'suv', 'van', 'truck', 'mini'];
 const SZ = { sedan: [118, 40], suv: [124, 58], van: [140, 70], truck: [150, 64], mini: [96, 36] };
 export const SPOT_VALUES = [20, 30, 45, 60, 80, 100, 125, 155, 190, 230];
 // Spot distances (m past the kicker). Tuned to a human-ish flight model (tools/range2.mjs, tools/human_bot.mjs): fresh reaches #1-2, each upgrade tier adds about one.
-export const LADDER = [16, 34, 60, 96, 136, 176, 218, 262, 306, 350];
+export const LADDER = [18, 40, 76, 124, 180, 240, 306, 378, 456, 540];
 
 export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   const R = rng(seed), T = tuneFrom(up), gy = 620;
