@@ -30,18 +30,35 @@ if (save.econ !== 2) { // v2 economy: old saves were inflated by the flip exploi
   save.coins = Math.min(save.coins, 150); save.econ = 2; }
 if (save.upVer !== UPGRADE_VER) { for (const k in save.up) save.up[k] = (save.up[k] || 0) * 3; save.upVer = UPGRADE_VER; } // 3x levels: old level n -> 3n
 save.flames = save.flames || ['classic']; save.flame = save.flame || 'classic';
+save.paints = save.paints || []; save.skin = ({ white: 'pearl', midnight: 'purple', flame: 'orange', stealth: 'matte' })[save.skin] || save.skin; // old milestone skins -> paints
 for (const u of UPGRADES) if ((save.up[u.k] || 0) > u.max) save.up[u.k] = u.max;
 
 // ---------- car skins (unlocked by milestones) ----------
+// ---------- paint shop (coins; milestones unlock some paints free, or at half price) ----------
 const SKINS = [
-  { k: 'white', name: 'Showroom', tint: 0xffffff, req: 'Default', ok: () => true },
-  { k: 'midnight', name: 'Midnight', tint: 0x7b8cff, req: 'Park 5 times', ok: () => save.stats.parks >= 5 },
-  { k: 'flame', name: 'Hot Rod', tint: 0xff7a4a, req: 'Land a triple flip', ok: () => save.stats.triple >= 1 },
-  { k: 'mint', name: 'Mint', tint: 0x8affc8, req: 'Steal 3 spots', ok: () => save.stats.steals >= 3 },
-  { k: 'gold', name: 'Gold', tint: 0xffd23f, req: 'Park in spot #5', ok: () => save.bestSpot >= 5 },
-  { k: 'neon', name: 'Neon', tint: 0xff5ad8, req: '5-park streak', ok: () => save.bestStreak >= 5 },
-  { k: 'stealth', name: 'Stealth', tint: 0x6a6f7c, req: 'Park in spot #10', ok: () => save.bestSpot >= 10 },
+  { k: 'pearl', name: 'Pearl White', tint: 0xffffff, price: 0 },
+  { k: 'black', name: 'Midnight Black', tint: 0x3a3d4a, price: 120 },
+  { k: 'red', name: 'Racing Red', tint: 0xff4a4a, price: 150 },
+  { k: 'eblue', name: 'Electric Blue', tint: 0x4aa8ff, price: 180 },
+  { k: 'lime', name: 'Lime', tint: 0xa8ff4a, price: 200 },
+  { k: 'orange', name: 'Sunset Orange', tint: 0xff9a3c, price: 220, req: 'Land a triple flip', ok: () => save.stats.triple >= 1, free: true },
+  { k: 'purple', name: 'Purple Haze', tint: 0xb07aff, price: 250, req: 'Park 5 times', ok: () => save.stats.parks >= 5, free: true },
+  { k: 'mint', name: 'Mint', tint: 0x8affc8, price: 260, req: 'Steal 3 spots', ok: () => save.stats.steals >= 3, free: true },
+  { k: 'matte', name: 'Matte Grey', tint: 0x8a8f9c, price: 280, req: 'Park in spot #10', ok: () => save.bestSpot >= 10, free: true },
+  { k: 'gold', name: 'Gold', tint: 0xffd23f, price: 600, req: 'Park in spot #5', ok: () => save.bestSpot >= 5, free: true },
+  { k: 'chrome', name: 'Chrome', tint: 0xdfe8f0, price: 500, anim: 'chrome' },
+  { k: 'neon', name: 'Neon', tint: 0xff5ad8, price: 900, anim: 'neon', req: '5-park streak: half price', ok: () => save.bestStreak >= 5 },
+  { k: 'holo', name: 'Holo', tint: 0xffffff, price: 1200, anim: 'holo' },
 ];
+const OLD_SKIN = { white: 'pearl', midnight: 'purple', flame: 'orange', stealth: 'matte' };
+const paintPrice = k => k.ok?.() ? (k.free ? 0 : Math.round(k.price / 2)) : k.price;
+const ownsPaint = k => k.price === 0 || (k.free && k.ok()) || (save.paints || []).includes(k.k);
+const curPaint = () => SKINS.find(k => k.k === save.skin && ownsPaint(k)) || SKINS[0];
+const paintTint = (k, t = performance.now()) => k.anim === 'holo' ? Phaser.Display.Color.HSVToRGB((t / 1800) % 1, 0.55, 1).color
+  : k.anim === 'neon' ? Phaser.Display.Color.HSVToRGB(0.86 + 0.08 * Math.sin(t / 300), 0.7, 0.85 + 0.15 * Math.sin(t / 150)).color
+  : k.anim === 'chrome' ? (() => { const v = 200 + 55 * (0.5 + 0.5 * Math.sin(t / 400)) | 0; return (v << 16) | (v << 8) | Math.min(255, v + 12); })() : k.tint;
+const swatch = k => k.anim === 'holo' ? 'linear-gradient(90deg,#ff9ad8,#9ad8ff,#c8ff9a,#ffe39a)' : k.anim === 'neon' ? 'linear-gradient(90deg,#ff5ad8,#b05aff)'
+  : k.anim === 'chrome' ? 'linear-gradient(135deg,#fff,#9aa6b4,#fff)' : '#' + k.tint.toString(16).padStart(6, '0');
 // ---------- thruster flame colours (bought with coins) ----------
 const FLAMES = [
   { k: 'classic', name: 'Classic', price: 0, t: [0xfff3a0, 0xffa23f, 0xff5a3c, 0xcccccc] },
@@ -61,8 +78,8 @@ const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${d.ge
 const dailyGift = () => 40 + Math.round(360 * progressOf(save.up)); // scales with upgrade progress
 const freeGift = () => Math.round(dailyGift() * 0.5); // no-ads platforms: a free daily bonus instead (smaller, no ad)
 const untilMidnight = () => { const d = new Date(), m = new Date(d); m.setHours(24, 0, 0, 0); const s = Math.max(0, (m - d) / 1000 | 0); return `${s / 3600 | 0}h ${String((s / 60 | 0) % 60).padStart(2, '0')}m`; };
-const skinTint = () => (SKINS.find(k => k.k === save.skin && k.ok()) || SKINS[0]).tint;
-const unlockedSkins = () => SKINS.filter(k => k.ok()).map(k => k.k);
+const skinTint = () => paintTint(curPaint());
+const unlockedSkins = () => SKINS.filter(k => k.free && k.ok()).map(k => k.k);
 // ---------- quick-win challenge (one per run, small reward, usually achievable) ----------
 function pickQuest() {
   const d = Math.max(10, Math.round((save.bestDist || 12) * 0.75 / 5) * 5);
@@ -189,8 +206,9 @@ function openShop(after) {
       return `<div class="up"><b>${u.name}</b><div class="pips">${'■'.repeat(l)}<i>${'■'.repeat(u.max - l)}</i></div><small>${u.desc}</small>
         <div class="stat">${a.label}: <b>${a.v}</b>${b ? ` → <b class="nx">${b.v}</b>` : ''}</div>
         <button data-k="${u.k}" ${maxed || save.coins < c ? 'disabled' : ''}>${maxed ? 'MAX' : '🪙 ' + c}</button></div>`; }).join('')}</div>
-      <div class="garage"><b>GARAGE</b>${SKINS.map(k => `<button class="sk ${save.skin === k.k ? 'sel' : ''}" data-s="${k.k}" ${k.ok() ? '' : 'disabled'} title="${k.req}">
-        <i style="background:#${k.tint.toString(16).padStart(6, '0')}"></i>${k.ok() ? k.name : '🔒 ' + k.req}</button>`).join('')}</div>
+      <div class="garage paints"><b>PAINT SHOP</b>${SKINS.map(k => { const own = ownsPaint(k), pr = paintPrice(k), eq = curPaint().k === k.k;
+        return `<button class="sk ${eq ? 'sel' : ''}" data-s="${k.k}" ${!own && save.coins < pr ? 'disabled' : ''} title="${k.req || ''}"><i style="background:${swatch(k)}"></i>${k.name}
+          <em>${eq ? '✔ EQUIPPED' : own ? 'OWNED' : pr === 0 ? 'FREE' : '🪙 ' + pr + (k.ok?.() && pr < k.price ? ' (½)' : '')}</em>${!own && k.req && !k.ok() ? `<small>${k.free ? 'or free: ' : ''}${k.req.replace(': half price', ' = ½ price')}</small>` : ''}</button>`; }).join('')}</div>
       <div class="garage flames"><b>FLAMES</b>${FLAMES.map(f => { const own = save.flames.includes(f.k), sw = f.t ? `background:linear-gradient(90deg,${f.t.map(c => '#' + c.toString(16).padStart(6, '0')).join(',')})` : 'background:linear-gradient(90deg,red,orange,yellow,lime,cyan,blue,magenta)';
         return `<button class="sk fl ${save.flame === f.k ? 'sel' : ''}" data-f="${f.k}" ${!own && save.coins < f.price ? 'disabled' : ''}><i style="${sw}"></i>${f.name}${own ? '' : ' 🪙 ' + f.price}</button>`; }).join('')}</div>
       <div class="dailyad">${save.dailyAd === localDay() ? `<button disabled>🎁 Daily ${adsOn() ? 'gift' : 'bonus'} claimed · next in ${untilMidnight()}</button>`
@@ -210,7 +228,9 @@ function openShop(after) {
     if (dfree) dfree.onclick = () => { if (save.dailyAd === localDay()) return; save.coins += freeGift(); save.dailyAd = localDay(); persist(); sfx.buy(); draw(); };
     const dad = shopEl.querySelector('[data-a=dad]');
     if (dad) dad.onclick = () => { dad.disabled = true; showRewarded(() => { if (save.dailyAd === localDay()) return; const g = dailyGift(); save.coins += g; save.dailyAd = localDay(); persist(); sfx.buy(); draw(); }).finally?.(() => shopEl?.isConnected && draw()); };
-    shopEl.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { save.skin = b.dataset.s; persist(); sfx.click(); draw(); });
+    shopEl.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { const k = SKINS.find(x => x.k === b.dataset.s);
+      if (!ownsPaint(k)) { const pr = paintPrice(k); if (save.coins < pr) return; save.coins -= pr; save.paints.push(k.k); sfx.buy(); } else sfx.click();
+      save.skin = k.k; persist(); draw(); });
     shopEl.querySelector('[data-a=go]').onclick = () => startLaunch(after?.daily);
     shopEl.querySelector('[data-a=menu]').onclick = () => { closeShop(); showMenu(); };
   };
@@ -468,6 +488,7 @@ class Play extends Phaser.Scene {
     }
     this.city1.tilePositionX = this.cameras.main.scrollX * 0.35 / 2;
     this.carImg.setPosition(c.position.x, c.position.y).setRotation(c.angle).setFlipX(S.facing < 0);
+    if (this.isLaunch && curPaint().anim) this.carImg.setTint(skinTint());
     // flip car texture when driving left? keep facing right (simple)
     S.movers.forEach((m, i) => this.moverGfx[i].setPosition(m.b.position.x, m.b.position.y));
     S.carts.forEach((b, i) => this.cartGfx[i].setPosition(b.position.x, b.position.y).setRotation(b.angle));
@@ -592,7 +613,7 @@ class Play extends Phaser.Scene {
         ${L.mult > 1 ? `<div class="row"><span>Coin Magnet</span><b>x${L.mult.toFixed(1)}</b></div>` : ''}</div>
       <div class="sum"><div class="t">🪙 +<span class="cnt">0</span></div><div class="tot">total 🪙 ${save.coins}</div>
         <div class="tags">${p.dist}m${newDist ? ' <b class="nb">NEW BEST DISTANCE!</b>' : ''}${save.streak > 1 ? ` · 🔥 ${save.streak} streak` : ''}${!S.parked && prevStreak > 1 ? ` · streak of ${prevStreak} lost` : ''}</div>
-        ${newSkins.length ? `<div class="nb">🎨 NEW SKIN: ${newSkins.map(k => SKINS.find(x => x.k === k).name).join(', ')}! (Shop)</div>` : ''}
+        ${newSkins.length ? `<div class="nb">🎨 FREE PAINT UNLOCKED: ${newSkins.map(k => SKINS.find(x => x.k === k).name).join(', ')}! (Shop)</div>` : ''}
         ${next ? `<div class="hint">${save.coins >= next.c ? '✅ You can afford ' + next.u.name + '!' : 'Next: ' + next.u.name + ' at 🪙' + next.c}</div>` : ''}</div></div>
       ${L.daily ? `<div class="daily">🏆 Daily best today: 🪙${save.daily[L.seed]} · leaderboard coming soon <button data-a="share">📋 Copy result</button></div>` : ''}
       ${adsOn() && p.total > 0 ? `<div class="btns"><button class="adbtn" data-a="ad2">📺 Watch ad: 2x coins</button></div>` : ''}
