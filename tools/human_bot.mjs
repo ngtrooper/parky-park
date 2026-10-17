@@ -17,13 +17,16 @@ export function humanRun(L, i, lag = 9, seed = 1) {
   }
   return S;
 }
-export const TIERS = [0, 3, 6, 9, 12, 15, 19, 23, 27, 33];
+export const TIERS = [0, 2, 4, 6, 8, 10, 13, 16, 20, 24];
 if ((process.argv[1] || '').endsWith('human_bot.mjs')) {
   const P = path();
+  let tries = 0, parks = 0;
   for (const n of TIERS) { const out = [];
-    for (const seed of [11, 22, 33, 44, 55, 66]) { const L = genLot(seed, P[n].up); let best = 0;
-      for (let i = 0; i < L.spots.length; i++) { let ok = 0; for (const s of [3, 7, 11]) { const S = humanRun(L, i, 9, s * seed); if (S.parked && S.parkedSpot === i) ok++; } if (ok >= 2) best = i + 1; }
+    for (const seed of [11, 22, 33, 44, 55, 66]) { const L = genLot(seed, P[n].up); let best = 0, okBest = 0;
+      for (let i = 0; i < L.spots.length; i++) { let ok = 0; for (const s of [3, 7, 11]) { const S = humanRun(L, i, 9, s * seed); if (S.parked && S.parkedSpot === i) ok++; } if (ok >= 2) { best = i + 1; okBest = ok; } }
+      tries += 3; parks += okBest;
       out.push(best); }
+    if (n === TIERS[TIERS.length - 1]) console.log('park rate when aiming at your farthest reliable spot:', Math.round(100 * parks / tries) + '%');
     console.log(`tier n=${String(n).padStart(2)} spent ${String(P[n].spent).padStart(4)}  human-model farthest spot:`, out.join(' '));
   }
 }

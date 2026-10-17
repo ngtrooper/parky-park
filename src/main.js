@@ -155,11 +155,14 @@ function openShop(after) {
         <button data-k="${u.k}" ${maxed || save.coins < c ? 'disabled' : ''}>${maxed ? 'MAX' : '🪙 ' + c}</button></div>`; }).join('')}</div>
       <div class="garage"><b>GARAGE</b>${SKINS.map(k => `<button class="sk ${save.skin === k.k ? 'sel' : ''}" data-s="${k.k}" ${k.ok() ? '' : 'disabled'} title="${k.req}">
         <i style="background:#${k.tint.toString(16).padStart(6, '0')}"></i>${k.ok() ? k.name : '🔒 ' + k.req}</button>`).join('')}</div>
-      <div class="btns"><button class="main" data-a="go">▶ Run again (Enter)</button><button data-a="menu">Menu</button></div>`;
+      <div class="btns"><button class="main" data-a="go">▶ Run again (Enter)</button><button data-a="menu">Menu</button><button class="danger" data-a="reset">⟲ Reset progress</button></div>`;
     shopEl.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
       const u = UPGRADES.find(x => x.k === b.dataset.k), l = save.up[u.k] || 0, c = costOf(u, l);
       if (save.coins >= c && l < u.max) { save.coins -= c; save.up[u.k] = l + 1; persist(); sfx.buy(); draw(); }
     });
+    const rb = shopEl.querySelector('[data-a=reset]');
+    rb.onclick = () => { if (!rb.dataset.armed) { rb.dataset.armed = 1; rb.textContent = '⚠ Tap again: erase ALL coins, upgrades, stars & skins'; setTimeout(() => { if (rb.isConnected) { delete rb.dataset.armed; rb.textContent = '⟲ Reset progress'; } }, 4000); return; }
+      Object.keys(localStorage).filter(k => k.startsWith('parkypark')).forEach(k => localStorage.removeItem(k)); location.reload(); };
     shopEl.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { save.skin = b.dataset.s; persist(); sfx.click(); draw(); });
     shopEl.querySelector('[data-a=go]').onclick = () => startLaunch(after?.daily);
     shopEl.querySelector('[data-a=menu]').onclick = () => { closeShop(); showMenu(); };
@@ -184,8 +187,8 @@ class Play extends Phaser.Scene {
     // sky
     const sky = this.add.graphics().setScrollFactor(0).setDepth(-10);
     for (let i = 0; i < 16; i++) { sky.fillStyle(Phaser.Display.Color.Interpolate.ColorWithColor(
-      Phaser.Display.Color.HexStringToColor(top), Phaser.Display.Color.HexStringToColor(bot), 15, i).color, 1); sky.fillRect(-3000, -1400 + i * 160, 7000, 162); }
-    this.add.tileSprite(-1500, 0, 4000, 180, 'city0').setOrigin(0, 0).setTileScale(2).setScrollFactor(0.15, 0).setDepth(-9).setY(560 - 180 - 60).setAlpha(0.6);
+      Phaser.Display.Color.HexStringToColor(top), Phaser.Display.Color.HexStringToColor(bot), 15, i).color, 1); sky.fillRect(-20000, -9000 + i * 1200, 40000, 1202); }
+    this.city0 = this.add.tileSprite(-1500, 0, 4000, 180, 'city0').setOrigin(0, 0).setTileScale(2).setScrollFactor(0.15, 0).setDepth(-9).setY(560 - 180 - 60).setAlpha(0.6);
     this.city1 = this.add.tileSprite(-1500, 0, 4000, 180, 'city1').setOrigin(0, 0).setTileScale(2).setScrollFactor(0, 0.6).setDepth(-8).setY(L.h - 330); // fixed width (huge tile sprites overflow GL max texture size)
     // solids
     for (const s of L.solids) this.drawSolid(s);
@@ -217,8 +220,11 @@ class Play extends Phaser.Scene {
     if (this.isLaunch && save.bestDist > 0) { // flag at your previous best distance
       const fx = L.lipX + save.bestDist * 60, fy = 620, f = this.add.graphics().setDepth(2);
       f.fillStyle(0xffffff, 1); f.fillRect(fx - 2, fy - 150, 4, 150); f.fillStyle(0xff7a1a, 1); f.fillTriangle(fx + 2, fy - 150, fx + 2, fy - 118, fx + 46, fy - 134);
-      this.add.text(fx + 6, fy - 176, 'BEST ' + save.bestDist + 'm', { font: 'bold 20px monospace', color: '#ffffff', stroke: '#000', strokeThickness: 5 }).setDepth(2);
+      this.add.text(fx + 6, fy - 176, 'FARTHEST FLIGHT ' + save.bestDist + 'm', { font: 'bold 20px monospace', color: '#ffffff', stroke: '#000', strokeThickness: 5 }).setDepth(2);
       this.bestFlagX = fx; }
+    if (this.isLaunch && save.bestSpot > 0) { const sp = L.spots[save.bestSpot - 1];
+      this.add.text(sp.x + sp.w / 2, sp.y - 128, '★ BEST SPOT', { font: 'bold 18px monospace', color: '#3ddc84', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5).setDepth(2); }
+    this.predG = this.add.graphics().setDepth(6);
     this.quest = this.isLaunch ? pickQuest() : null; this.gotBestDist = false;
     // ghost
     this.ghostData = this.isLaunch ? null : JSON.parse(localStorage.getItem(ghostKey(L.id)) || 'null');
@@ -237,10 +243,10 @@ class Play extends Phaser.Scene {
       alpha: { start: 0.7, end: 0 }, tint: 0xd8d2c4, emitting: false }).setDepth(4);
     // camera
     const cam = this.cameras.main;
-    cam.setBounds(0, -1400, L.w, L.h + 1400); // tall: high flights stay on screen
+    cam.setBounds(0, -9000, L.w, L.h + 9000); // tall: high flights stay on screen
     cam.setZoom(this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1));
-    if (this.isLaunch) cam.setFollowOffset(-180, 40);
-    cam.startFollow(this.carImg, true, 0.12, 0.12);
+    this.camT = this.add.zone(L.start.x, L.start.y, 1, 1);
+    cam.startFollow(this.isLaunch ? this.camT : this.carImg, true, 0.2, 0.2);
     cam.setRoundPixels(false);
     this.buildHud();
     this.events.once('shutdown', () => { hud?.remove(); overlay?.remove(); });
@@ -253,6 +259,36 @@ class Play extends Phaser.Scene {
       this.baseZoom = (this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1)) * f; this.cameras.main.setZoom(this.baseZoom); this.uiScale(); };
     this.applyZoom(); this.scale.on('resize', this.applyZoom); this.events.once('shutdown', () => this.scale.off('resize', this.applyZoom));
   }
+  surfaceAt(x) { let y = 620, what = 'ground';
+    for (const s of this.L.solids) if ((s.t === 'car' || s.t === 'cone') && x > s.r[0] - 20 && x < s.r[0] + s.r[2] + 20 && s.r[1] < y) { y = s.r[1]; what = 'roof'; }
+    for (const [a, b] of this.L.pits || []) if (x > a && x < b) what = 'pit';
+    return { y, what }; }
+  drawPrediction(S) { // where you'd land if you let go now, plus an arrow to the next free spot
+    const g = this.predG, c = S.car; g.clear();
+    const show = !S.grounded && c.position.x > this.L.lipX - 40 && !this.done;
+    if (show) {
+      let x = c.position.x, y = c.position.y, vx = c.velocity.x, vy = c.velocity.y; const drag = 1 - (this.L.tune.drag || 0.02), gr = 0.00082 * DT * DT;
+      for (let i = 0; i < 600; i++) { vy += gr; vx *= drag; vy *= drag; x += vx; y += vy; if (vy > 0 && y + 11 >= this.surfaceAt(x).y) break; }
+      const surf = this.surfaceAt(x); let spot = -1;
+      S.spots.forEach((sp, i) => { const r = S.spotRect(i); if (!S.taken.has(i) && x > r.x - 10 && x < r.x + r.w + 10) spot = i; });
+      const col = spot >= 0 ? 0x3ddc84 : surf.what === 'ground' ? 0xffffff : 0xff5a5a, z = this.cameras.main.zoom, sc = Math.max(1, 0.62 / z);
+      g.fillStyle(0x000000, 0.35); g.fillEllipse(x, surf.y - 2, 70 * sc, 14 * sc);
+      g.lineStyle(4 * sc, col, 0.95); g.strokeEllipse(x, surf.y - 2, 70 * sc, 14 * sc);
+      g.fillStyle(col, 0.95); g.fillTriangle(x - 14 * sc, surf.y - 40 * sc, x + 14 * sc, surf.y - 40 * sc, x, surf.y - 16 * sc);
+      this.predSpot = spot;
+    }
+    // next free spot ahead (or behind) that is off screen
+    const vw = this.cameras.main.worldView; let best = null;
+    S.spots.forEach((sp, i) => { if (S.taken.has(i)) return; const cx = sp.x + sp.w / 2, d = cx - c.position.x;
+      if (cx > vw.right || cx < vw.x) if (!best || Math.abs(d) < Math.abs(best.d)) best = { i, d, v: sp.value }; });
+    const el = this.hArrow; if (!el) return;
+    const txt = best && !this.done ? (best.d > 0 ? `🅿️ #${best.i + 1} 🪙${best.v} · ${Math.round(best.d / 60)}m ▶` : `◀ 🅿️ #${best.i + 1} 🪙${best.v} · ${Math.round(-best.d / 60)}m`) : '';
+    if (el.textContent !== txt) { el.textContent = txt; el.className = 'spotarrow ' + (best && best.d < 0 ? 'left' : 'right') + (txt ? ' on' : ''); }
+  }
+  refreshHud() { // keep HUD numbers in sync after results (best spot, distance, coins)
+    if (!hud) return; const b = hud.querySelector('.bestline');
+    if (b) b.textContent = this.isLaunch ? `best spot #${save.bestSpot} · farthest ${save.bestDist}m` : save.best[this.L.id] ? 'BEST ' + fmt(save.best[this.L.id]) : 'no best yet';
+    if (this.isLaunch && this.hP3) this.hP3.textContent = '🪙 ' + save.coins; }
   uiScale() { // bold UI that grows with the screen (was tiny at 1080p+)
     const z = Math.max(1, Math.min(2.4, Math.min(innerWidth / 960, innerHeight / 600) * 1.2)), r = document.documentElement.style;
     r.setProperty('--z', z.toFixed(3)); r.setProperty('--zp', Math.min(z, 1.7).toFixed(3)); r.setProperty('--zm', Math.max(1, Math.min(z, innerHeight / 720)).toFixed(3)); }
@@ -278,15 +314,15 @@ class Play extends Phaser.Scene {
       ${LA && this.quest ? `<div class="quest">🎯 ${this.quest.txt} <b>🪙+${this.quest.pay}</b></div>` : ''}
       <div class="bar"><span>AIR</span><div class="fuel"><i></i></div></div>${LA ? '<div class="bar"><span>BOOST</span><div class="fuel boost"><i></i></div></div>' : ''}<div class="style"></div></div>
       <div class="r"><div class="timer">${LA ? '0m' : '0.00'}</div><div class="pars"><span class="p2">★★ ${L.par[0]}s</span><span class="p3">★★★ ${L.par[1]}s</span></div>
-      <div class="pars"><span>${LA ? `best spot #${save.bestSpot} · ${save.bestDist}m` : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div>
+      <div class="pars"><span class="bestline">${LA ? `best spot #${save.bestSpot} · farthest ${save.bestDist}m` : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div>
       ${LA && save.streak ? `<div class="streak">🔥 ${save.streak} park streak · +${Math.min(5, save.streak) * 10}%</div>` : ''}</div></div>
-      <div class="warn"></div>
+      <div class="warn"></div>${LA ? '<div class="spotarrow"></div>' : ''}
       <div class="topbtns p"><button data-a="r">↻ R</button><button data-a="m">☰</button></div></div>`);
     hud.querySelector('[data-a=r]').onclick = () => this.restartLevel();
     hud.querySelector('[data-a=m]').onclick = () => showMenu();
     ui.insertBefore(hud, ui.firstChild);
     this.hTimer = hud.querySelector('.timer'); this.hFuel = hud.querySelector('.fuel i'); this.hBoost = hud.querySelector('.boost i'); this.hStyle = hud.querySelector('.style');
-    this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3'); this.hWarn = hud.querySelector('.warn');
+    this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3'); this.hWarn = hud.querySelector('.warn'); this.hArrow = hud.querySelector('.spotarrow');
   }
   restartLevel() { if (menuEl || shopEl) return; if (this.isLaunch) return startLaunch(this.daily); this.scene.restart({ id: this.levelId }); }
   next() {
@@ -345,6 +381,7 @@ class Play extends Phaser.Scene {
       if (typeof e === 'string' && e.startsWith('flipland:')) { const n = +e.split(':')[1]; if (n >= 3) { save.stats.triple++; persist(); }
         this.toast(`${['', 'FLIP', 'DOUBLE FLIP', 'TRIPLE FLIP'][n] || 'INSANE x' + n}! PAY ×${flipMult(S).toFixed(2)} IF YOU PARK`); sfx.park(Math.min(3, n)); cam.flash(90, 255, 230, 120); }
       if (typeof e === 'string' && e.startsWith('bail')) { this.toast(`SLOPPY LANDING! ×${flipMult(S).toFixed(2)}`); sfx.bump(); }
+      if (e === 'magnet') { sfx.thud(3); this.toast('SO CLOSE… IN YOU GO!'); }
       if (e === 'unstick') { sfx.thud(4); this.dust.emitParticleAt(c.position.x, c.position.y + 10, 8); }
       if (typeof e === 'string' && e.startsWith('veer:')) { this.toast('BACK OFF! IT\'S MINE!'); sfx.honk(); cam.shake(150, 0.008); }
       if (e === 'go' && this.isLaunch) { this.toast('GO!'); sfx.park(1); }
@@ -360,12 +397,18 @@ class Play extends Phaser.Scene {
   }
   render(S) {
     const c = S.car;
-    if (this.isLaunch) { // speed feel: zoom out + speed lines when going fast
-      const v = Math.hypot(c.velocity.x, c.velocity.y), k = Phaser.Math.Clamp((v - 9) / 14, 0, 1);
+    if (this.isLaunch) { // speed feel + framing: zoom out so the ground and spots stay in view at peak height
+      const v = Math.hypot(c.velocity.x, c.velocity.y), k = Phaser.Math.Clamp((v - 9) / 14, 0, 1), cam = this.cameras.main;
       this.speedK = (this.speedK || 0) + (k - (this.speedK || 0)) * 0.06;
-      this.cameras.main.setZoom(this.baseZoom * (1 - 0.22 * this.speedK));
-      if (k > 0.15 && !S.grounded && Math.random() < k * 1.6) { const cam = this.cameras.main, vw = cam.worldView;
+      const gy = 620, gap = Math.max(0, gy - c.position.y), air = c.position.x > this.L.lipX - 200;
+      const fit = air ? cam.height / (gap + 520) : 9, zt = Math.max(this.baseZoom * 0.3, Math.min(this.baseZoom * (1 - 0.22 * this.speedK), fit));
+      this.zoomNow = (this.zoomNow || zt) + (zt - (this.zoomNow || zt)) * 0.15; cam.setZoom(this.zoomNow);
+      const vh = cam.height / this.zoomNow, ty = air ? Math.min(c.position.y + vh / 2 - 140, Math.max(c.position.y - 40, gy + 150 - vh / 2)) : c.position.y - 40; // ground pinned near the bottom, car kept on screen
+      this.camT.setPosition(c.position.x + 180 / this.zoomNow * this.baseZoom, ty);
+      const fade = Phaser.Math.Clamp(1 - gap / 1400, 0, 1); this.city0?.setAlpha(0.6 * fade); this.city1.setAlpha(fade);
+      if (k > 0.15 && !S.grounded && Math.random() < k * 1.6) { const vw = cam.worldView;
         this.lines.emitParticleAt(vw.right + 40, vw.y + Math.random() * vw.height, 1); }
+      this.drawPrediction(S);
     }
     this.city1.tilePositionX = this.cameras.main.scrollX * 0.35 / 2;
     this.carImg.setPosition(c.position.x, c.position.y).setRotation(c.angle).setFlipX(S.facing < 0);
@@ -445,7 +488,7 @@ class Play extends Phaser.Scene {
     const stars = starsFor(L, t), prevBest = save.best[L.id];
     const newBest = !prevBest || t < prevBest;
     if (newBest) { save.best[L.id] = t; localStorage.setItem(ghostKey(L.id), JSON.stringify(this.ghostRec)); }
-    save.stars[L.id] = Math.max(save.stars[L.id] || 0, stars); persist();
+    save.stars[L.id] = Math.max(save.stars[L.id] || 0, stars); persist(); this.refreshHud();
     this.cameras.main.shake(260, 0.012); this.cameras.main.flash(120, 255, 255, 255);
     this.sparks.emitParticleAt(S.car.position.x, S.car.position.y - 10, 60);
     sfx.park(stars);
@@ -470,7 +513,7 @@ class Play extends Phaser.Scene {
     const newSpot = S.parked && S.parkedSpot + 1 > save.bestSpot;
     if (S.parked) { save.bestSpot = Math.max(save.bestSpot, S.parkedSpot + 1); save.stats.parks++; }
     if (L.daily) { save.daily[L.seed] = Math.max(save.daily[L.seed] || 0, p.total); save.stats.dailies++; }
-    persist();
+    persist(); this.refreshHud(); this.predG.clear(); this.hArrow && (this.hArrow.className = 'spotarrow');
     const newSkins = unlockedSkins().filter(k => !before.includes(k));
     // near miss: ended just short of / next to a free spot
     let close = null;

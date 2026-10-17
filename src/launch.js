@@ -6,15 +6,15 @@ export const dailySeed = (d = new Date()) => +`${d.getUTCFullYear()}${String(d.g
 export const CURVE = [0, 0.3, 0.52, 0.7, 0.84, 0.94, 1];
 const cv = (l, max) => CURVE[Math.round((l / max) * 6)] ?? 1;
 export const UPGRADES = [
-  { k: 'boostPow', name: 'Launch Power', desc: 'Faster off the ramp', base: 40, max: 6, stat: l => ({ label: 'Launch speed', v: Math.round(tuneFrom({ boostPow: l }).tune.kick * 100) + '%' }) },
-  { k: 'air', name: 'Air Tank', desc: 'Fly longer (hold ▶ in the air)', base: 45, max: 6, stat: l => ({ label: 'Flight fuel', v: Math.round(tuneFrom({ air: l }).fuel) }) },
-  { k: 'thrust', name: 'Thrusters', desc: 'Stronger lift, less drag', base: 60, max: 6, stat: l => ({ label: 'Thrust', v: Math.round(tuneFrom({ thrust: l }).tune.lift * 100) + '%' }) },
-  { k: 'boostCap', name: 'Boost Tank', desc: 'More boost on the ramp', base: 50, max: 4, stat: l => ({ label: 'Boost', v: Math.round(tuneFrom({ boostCap: l }).tune.boostCap) }) },
-  { k: 'grip', name: 'Tires', desc: 'Drive faster in the lot to fix short landings', base: 70, max: 4, stat: l => ({ label: 'Lot speed', v: tuneFrom({ grip: l }).tune.lotTop.toFixed(1) }) },
-  { k: 'spin', name: 'Spin Gyro', desc: 'Faster flips (flips multiply your parking pay)', base: 70, max: 4, stat: l => ({ label: 'Flip speed', v: Math.round(tuneFrom({ spin: l }).tune.spin * 100) + '%' }) },
-  { k: 'mult', name: 'Coin Magnet', desc: '+10% coins per level', base: 200, max: 3, stat: l => ({ label: 'Coins', v: '+' + l * 10 + '%' }) },
+  { k: 'boostPow', name: 'Launch Power', desc: 'Faster off the ramp', base: 50, max: 4, stat: l => ({ label: 'Launch speed', v: Math.round(tuneFrom({ boostPow: l }).tune.kick * 100) + '%' }) },
+  { k: 'air', name: 'Air Tank', desc: 'Fly longer (hold ▶ in the air)', base: 65, max: 4, stat: l => ({ label: 'Flight fuel', v: Math.round(tuneFrom({ air: l }).fuel) }) },
+  { k: 'thrust', name: 'Thrusters', desc: 'Stronger lift, less drag', base: 110, max: 4, stat: l => ({ label: 'Thrust', v: Math.round(tuneFrom({ thrust: l }).tune.lift * 100) + '%' }) },
+  { k: 'boostCap', name: 'Boost Tank', desc: 'More boost on the ramp', base: 80, max: 3, stat: l => ({ label: 'Boost', v: Math.round(tuneFrom({ boostCap: l }).tune.boostCap) }) },
+  { k: 'grip', name: 'Tires', desc: 'Drive faster in the lot to fix short landings', base: 150, max: 3, stat: l => ({ label: 'Lot speed', v: tuneFrom({ grip: l }).tune.lotTop.toFixed(1) }) },
+  { k: 'spin', name: 'Spin Gyro', desc: 'Faster flips (flips multiply your parking pay)', base: 150, max: 3, stat: l => ({ label: 'Flip speed', v: Math.round(tuneFrom({ spin: l }).tune.spin * 100) + '%' }) },
+  { k: 'mult', name: 'Coin Magnet', desc: '+10% coins per level', base: 400, max: 3, stat: l => ({ label: 'Coins', v: '+' + l * 10 + '%' }) },
 ];
-export const costOf = (u, lvl) => Math.round(u.base * Math.pow(1.65, lvl) / 5) * 5;
+export const costOf = (u, lvl) => Math.round(u.base * Math.pow(1.4, lvl) / 5) * 5;
 
 export function tuneFrom(up) {
   const c = k => { const u = UPGRADES.find(x => x.k === k); return cv(Math.min(up[k] || 0, u.max), u.max); };
@@ -31,7 +31,7 @@ const KINDS = ['sedan', 'suv', 'van', 'truck', 'mini'];
 const SZ = { sedan: [118, 40], suv: [124, 58], van: [140, 70], truck: [150, 64], mini: [96, 36] };
 export const SPOT_VALUES = [20, 30, 45, 60, 80, 100, 125, 155, 190, 230];
 // Spot distances (m past the kicker). Tuned to a human-ish flight model (tools/range.mjs): fresh reaches #1-2, each upgrade tier adds about one.
-export const LADDER = [16, 34, 56, 76, 98, 114, 128, 156, 180, 200];
+export const LADDER = [16, 34, 56, 78, 100, 120, 142, 166, 186, 202];
 
 export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   const R = rng(seed), T = tuneFrom(up), gy = 620;

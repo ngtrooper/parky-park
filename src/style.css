@@ -102,3 +102,6 @@ button.big{font-size:22px;padding:10px 20px;min-width:200px}button.big small{dis
 .zones span b{font-size:30px;letter-spacing:4px}
 @media (max-height:500px){.panel.res{zoom:.82;min-width:480px}.panel.res .why{font-size:14px}.panel .sum .t{font-size:24px}.stamp{top:16%}.panel.res .hint,.panel.res .tags{font-size:12px}}
 .panel.res .rows:empty{display:none}
+.spotarrow{position:absolute;top:46%;zoom:var(--z);font:900 18px "Trebuchet MS",sans-serif;background:#0a3d22e0;border:3px solid #3ddc84;color:#fff;padding:6px 12px;border-radius:10px;opacity:0;transition:opacity .2s;text-shadow:2px 2px 0 #000}
+.spotarrow.on{opacity:1}.spotarrow.right{right:calc(10px + env(safe-area-inset-right))}.spotarrow.left{left:calc(10px + env(safe-area-inset-left))}
+button.danger{background:#ff8a8a;font-size:14px}

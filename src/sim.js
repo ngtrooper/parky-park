@@ -241,6 +241,19 @@ export function createSim(L) {
       S.idleF = any || !g || S.inSpot ? 0 : S.idleF + 1;
       S.slowF = sp < 0.4 && !S.inSpot && t > 90 && past ? S.slowF + 1 : 0;
       S.roofF = Math.cos(car.angle) < -0.2 && g ? S.roofF + 1 : 0;
+      // SO-CLOSE forgiveness: within ~6m of a free spot you never stall; slow + upright = gentle magnet (auto-hop over a flanking car)
+      let near = null;
+      for (let i = 0; i < SPOTS.length; i++) { if (S.taken.has(i)) continue; const r = S.spotRect(i), dx = r.x + r.w / 2 - car.position.x;
+        if (Math.abs(dx) < 360 && (!near || Math.abs(dx) < Math.abs(near.dx))) near = { i, dx }; }
+      S.nearSpot = near;
+      if (near && g && !S.inSpot && sp < 2.6 && Math.cos(car.angle) > 0.6 && !(near.dx > 0 ? inp.left : inp.right)) {
+        S.magF = (S.magF || 0) + 1; const want = Math.sign(near.dx) * Math.min(2.4, Math.abs(near.dx) * 0.02 + 0.5);
+        Body.setVelocity(car, { x: car.velocity.x + (want - car.velocity.x) * 0.12, y: car.velocity.y });
+        if (S.magF > 24 && sp < 0.6 && t - S.lastHop > 40) { S.lastHop = t; S.magF = 0; // blocked by a parked car: hop toward the spot
+          Body.setVelocity(car, { x: Math.max(-3.2, Math.min(3.2, near.dx * 0.02)), y: -HOP * 1.05 }); S.events.push('magnet'); }
+      } else S.magF = 0;
+      if (near && S.inSpot && g) Body.setVelocity(car, { x: car.velocity.x * 0.85, y: car.velocity.y }); // settle into it
+      if (near) { S.idleF = Math.min(S.idleF, 120); S.slowF = Math.min(S.slowF, 120); }
       // wedged while trying to move: free pop-hop every 1.25s so you can wriggle out
       if (S.slowF > 0 && S.slowF % 75 === 0 && g && any) { Body.setVelocity(car, { x: S.facing * 2.5, y: -HOP * 0.9 }); S.events.push('unstick'); }
       const juice = S.fuel >= 3 || S.boost >= 3;
