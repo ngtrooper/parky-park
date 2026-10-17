@@ -4,3 +4,8 @@ dist
 shots/frames
 shots/
 dist-portals/
+# release signing secrets (never commit)
+android/keystore/
+android/keystore.properties
+*.jks
+*.keystore

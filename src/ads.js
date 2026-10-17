@@ -1,9 +1,7 @@
 // Ad abstraction. Web build: mock ads (a short fake "test ad" overlay). Native (Capacitor): AdMob via
 // @capacitor-community/admob using Google's PUBLIC TEST ad unit IDs only. Swap in real IDs at publish time.
-const TEST_IDS = {
-  android: { interstitial: 'ca-app-pub-3940256099942544/1033173712', rewarded: 'ca-app-pub-3940256099942544/5224354917' },
-  ios: { interstitial: 'ca-app-pub-3940256099942544/4411468910', rewarded: 'ca-app-pub-3940256099942544/1712485313' },
-};
+import CFG from '../ads.config.json'; // AdMob ids + testing flag live in ads.config.json (repo root)
+const TEST_IDS = { android: CFG.android, ios: CFG.ios };
 const cap = () => window.Capacitor;
 export const isNative = () => !!cap()?.isNativePlatform?.();
 // Ads only exist in the native apps. The web build shows none (?mockads turns on the test mock for QA).
@@ -13,7 +11,7 @@ async function native() {
   if (!isNative()) return null;
   if (!ready) ready = (async () => {
     const { AdMob } = await import('@capacitor-community/admob');
-    await AdMob.initialize({ initializeForTesting: true });
+    await AdMob.initialize({ initializeForTesting: !!CFG.testing });
     try { await AdMob.requestTrackingAuthorization?.(); } catch {} // iOS ATT prompt
     try { const c = await AdMob.requestConsentInfo(); if (c.isConsentFormAvailable && c.status === 'REQUIRED') await AdMob.showConsentForm(); } catch {}
     admob = AdMob; return AdMob;
@@ -37,7 +35,7 @@ export async function showInterstitial() {
   if (busy) return; busy = true;
   try {
     const A = await native();
-    if (A) { await A.prepareInterstitial({ adId: ids().interstitial, isTesting: true }); await A.showInterstitial(); }
+    if (A) { await A.prepareInterstitial({ adId: ids().interstitial, isTesting: !!CFG.testing }); await A.showInterstitial(); }
     else await mock('interstitial', 1500);
   } catch (e) { console.warn('interstitial failed', e); } finally { busy = false; }
 }
@@ -48,7 +46,7 @@ export async function showRewarded(onReward) {
     if (A) {
       let got = false;
       const h = await A.addListener('onRewardedVideoAdReward', () => { got = true; });
-      await A.prepareRewardVideoAd({ adId: ids().rewarded, isTesting: true });
+      await A.prepareRewardVideoAd({ adId: ids().rewarded, isTesting: !!CFG.testing });
       await A.showRewardVideoAd(); h.remove?.();
       if (got) onReward?.(); return got;
     }

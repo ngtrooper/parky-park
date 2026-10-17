@@ -180,7 +180,7 @@ function showMenu() {
       return `<div class="lv ${locked ? 'locked' : ''}" data-id="${L.id}"><div class="n">${L.id}</div><div class="nm">${L.name}</div>
         <div class="s">${starStr(save.stars[L.id] || 0)}</div><div class="bt">${save.best[L.id] ? 'best ' + fmt(save.best[L.id]) : 'par ' + L.par[1] + 's'}</div></div>`;
     }).join('')}</div>
-    <div class="keys">← → move &nbsp; W A S D thrust (D on the ramp = boost) &nbsp; Q / E flip &nbsp; ↓ / SPACE hop<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
+    <div class="keys">← → move &nbsp; W A S D thrust (D on the ramp = boost) &nbsp; Q / E flip &nbsp; ↓ / SPACE hop<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu${platform.externalLinks ? '<br><a class="priv" href="./privacy.html" target="_blank" rel="noopener">Privacy policy</a>' : ''}</div></div>`);
   menuEl.querySelectorAll('.lv').forEach(el => el.addEventListener('click', () => { sfx.click(); startLevel(+el.dataset.id); }));
   menuEl.querySelector('[data-a=launch]').onclick = () => { sfx.click(); startLaunch(); };
   menuEl.querySelector('[data-a=daily]').onclick = () => { sfx.click(); startLaunch(true); };

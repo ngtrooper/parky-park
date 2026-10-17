@@ -1,0 +1,94 @@
+SPOT THIEF: Google Play listing + forms (prepared 17 Oct 2026; nothing submitted)
+
+App name (30 max): Spot Thief
+Default language: English (United States)
+App or game: Game
+Free or paid: Free
+Category: Racing   (alternative: Arcade)
+Tags (pick in Console): Racing, Arcade, Casual, Offline, Single player, Stylized
+Contact email: ng.trooper@gmail.com
+Privacy policy URL: https://ngtrooper.github.io/parky-park/privacy.html
+Contains ads: YES (Google AdMob)
+In-app purchases: NO
+
+SHORT DESCRIPTION (80 max; this one is 78):
+Boost off the ramp, fly with thrusters, flip, and steal the best parking spot!
+
+FULL DESCRIPTION (4000 max):
+The lot is full. Every car can fly. Only one gets the spot.
+
+Spot Thief is a physics stunt-parking game. Boost down a giant ramp, launch into the sky and pilot your car with real thrusters (lift, push forward, brake and slam down) through a true momentum arc. Flip in mid-air for bonus pay, then land and stop in a free parking spot before a rival driver steals it.
+
+HOW TO PLAY
+• Drive with the left-thumb arrows.
+• Push the right-thumb THRUST pad to fire the car's jets. Push it forward on the ramp to boost.
+• Flip with the rotate buttons. Each clean flip adds +25% to your pay, but only if you park!
+• Watch the landing marker: GREEN means a free spot. Land, stop, and it's yours.
+
+FEATURES
+• Real-momentum flying car physics with an 8-way thruster pad
+• Rival drivers and snatchers racing you to the same spot
+• Farther spots pay more: build your perfect launch
+• 7 upgrade lines with 60+ levels: Boost Power, Air Tank, Thrusters, Boost Tank, Tires, Spin Gyro, Coin Magnet
+• Paint shop with 13 paints, including animated Chrome, Neon and Holo
+• 8 thruster flame colours, from Ion Blue to Rainbow
+• Daily Lot challenge and a daily coin bonus
+• Hand-made puzzle levels
+• Play offline. Progress saves on your device.
+• Optional rewarded ads for 2x coins. No ads during gameplay.
+
+Can you steal spot #10?
+
+(Spot Thief is an original game; the car is a generic sci-fi sports car, not affiliated with any car brand.)
+
+GRAPHICS (in store/play/)
+• App icon: icon_512.png (512x512, 32-bit PNG)
+• Feature graphic: feature_graphic_1024x500.png
+• Phone screenshots (landscape 1920x1080, 7): screenshot_1_ramp_boost.png … screenshot_7_touch_controls.png
+• Optional promo video (YouTube URL): upload art/preview_landscape.mp4 to YouTube (unlisted is fine) and paste the link.
+
+========================================================================
+CONTENT RATING (IARC questionnaire): suggested answers
+Category: Game
+• Violence: NO (cars bump; no injury, blood, weapons or killing)
+• Fear / horror: NO
+• Sexuality / nudity: NO
+• Language (profanity, crude humor): NO
+• Controlled substances (drugs, alcohol, tobacco): NO
+• Gambling / simulated gambling: NO (no real-money or casino mechanics; coins are earned in play only)
+• User-generated content / user interaction (chat, sharing between users): NO
+• Shares user location: NO
+• Digital purchases: NO
+• Ads: YES
+Expected rating: Everyone / PEGI 3 / USK 0.
+
+TARGET AUDIENCE & CONTENT (Play Console "App content")
+• Target age groups: 13–15, 16–17, 18+  (do NOT select under-13 groups: AdMob personalised ads + Families policy would apply)
+• Appeal to children: say the store listing is not designed to attract children primarily; the art is a stylised car game for general audiences.
+• Ads declaration: Contains ads = Yes
+• App access: all functionality available without login
+• News app: No · COVID-19 app: No · Government app: No · Financial features: None · Health: No
+• Advertising ID declaration: YES, the app uses the Advertising ID (AdMob, com.google.android.gms.permission.AD_ID) for Advertising or marketing and Analytics/fraud prevention.
+
+========================================================================
+DATA SAFETY FORM: suggested answers (based on the Google Mobile Ads SDK disclosure, developers.google.com/admob/android/privacy/play-data-disclosure)
+Does your app collect or share any of the required user data types? YES (via the AdMob SDK)
+Is all user data encrypted in transit? YES (the SDK uses HTTPS)
+Do you provide a way for users to request that their data be deleted? Data is collected by Google; users can reset/delete their Advertising ID in device settings. Answer "No" to an in-app deletion mechanism (we hold no user data), or link to the privacy policy section 7.
+
+Data types (collected AND shared, by the Google Mobile Ads SDK):
+• Location → Approximate location (derived from IP address): Collected, Shared. Purposes: Advertising or marketing, Analytics, Fraud prevention/security. Not required to be optional? → collection is required for ads (not user-optional).
+• App activity → App interactions (ad interactions, app launches, taps): Collected, Shared. Purposes: Advertising or marketing, Analytics, Fraud prevention.
+• App info and performance → Crash logs, Diagnostics: Collected, Shared. Purposes: Analytics, Fraud prevention, Advertising.
+• Device or other IDs → Device or other IDs (Advertising ID, app-set ID): Collected, Shared. Purposes: Advertising or marketing, Analytics, Fraud prevention.
+Processed ephemerally? NO.
+NOT collected: name, email, user IDs, address, phone, financial info, health, messages, photos/videos, audio, files, calendar, contacts, web history, precise location, personal info.
+Game progress stays on the device and is not "collected" (never sent off the device by us).
+
+========================================================================
+APP-ADS.TXT (needed for full AdMob fill once real ads are on)
+• Google Play listing "Website" field must be a domain you control; app-ads.txt must be served at the ROOT of that domain: https://<domain>/app-ads.txt
+• GitHub Pages project sites (ngtrooper.github.io/parky-park/) are NOT a root. Options: (a) create the user site repo "ngtrooper.github.io" and put app-ads.txt at its root, then set the Play website to https://ngtrooper.github.io ; or (b) use a custom domain.
+• File content (from AdMob → Apps → View all apps → app-ads.txt), one line like:
+  google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+  (replace pub-XXXXXXXXXXXXXXXX with Franklin's AdMob publisher ID).

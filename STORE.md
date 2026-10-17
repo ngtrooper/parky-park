@@ -81,3 +81,22 @@ JDK 21 is in `~/jdk`, and the Android SDK (platform/build-tools 35) is in `~/and
 ## Trademark caution
 - **No "Tesla", "Roadster", "Elon", "Cybertruck", or logos/wordmarks** in the app name, icon, description, keywords or screenshots. Both stores reject impersonation and infringement, and it invites takedowns.
 - The car stays a generic white wedge. The parody humor ("parking date slipped") is fine in-game, but keep the listing generic, e.g. *"Launch off a ramp, flip, and steal the best parking spot."*
+
+## Google Play: prepared 17 Oct 2026 (nothing submitted)
+
+- **Release bundle:** `npm run android:aab` → `android/app/build/outputs/bundle/release/app-release.aab`
+  - app id `com.ngtrooper.spotthief`, versionCode 1, versionName 1.0.0, targetSdk/compileSdk 36 (required for new apps from 31 Aug 2026), minSdk 23.
+  - Bump `versionCode`/`versionName` in `android/app/build.gradle` for every upload.
+- **Upload key:**
+  - Keystore: `android/keystore/spotthief-upload.jks` (alias `upload`, RSA 4096, valid 10,000 days).
+  - Passwords are in `android/keystore/CREDENTIALS.txt` and `android/keystore.properties`. **All of these are gitignored.** Back them up offline and in a password manager.
+  - Gradle signs release builds automatically when `android/keystore.properties` exists.
+  - Enrol in **Play App Signing** (the default). Google holds the app signing key; this file is only the upload key.
+- **AdMob ids: one place, `ads.config.json` (repo root):**
+  - Set `"testing": false` and replace `android.appId`, `android.interstitial` and `android.rewarded`, plus the `ios.*` entries for iOS.
+  - The JS reads the unit ids. `android/app/build.gradle` injects `android.appId` into the manifest.
+  - For iOS, also paste `ios.appId` into `ios/App/App/Info.plist` (`GADApplicationIdentifier`).
+  - Then run `npm run android:aab`.
+- **Ad placements (native):** rewarded "2x coins" on results, rewarded daily gift in the shop, and interstitials only when a new run starts, at least 60 s apart. Never during gameplay, menu or shop.
+- **Privacy policy:** https://ngtrooper.github.io/parky-park/privacy.html (source: `public/privacy.html`; linked from the menu in the web and app builds).
+- **Store assets + form answers:** `store/play/`, including `listing.txt` with descriptions, category, content rating, target audience, Data safety and app-ads.txt notes.
