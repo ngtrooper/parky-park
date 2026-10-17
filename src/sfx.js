@@ -1,21 +1,21 @@
 // Tiny WebAudio synth blips (no assets).
-let ctx = null, lastThrust = 0, muted = false, adMute = false;
-const apply = () => { if (!ctx) return; if (muted || adMute) ctx.suspend?.().catch(() => {}); else ctx.resume?.().catch(() => {}); };
+let ctx = null, lastThrust = 0, muted = false, adMute = false, platMute = false; // platMute: portal setting (e.g. CrazyGames muteAudio) overrides the in-game toggle
+const apply = () => { if (!ctx) return; if (muted || adMute || platMute) ctx.suspend?.().catch(() => {}); else ctx.resume?.().catch(() => {}); };
 const ac = () => { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { ctx = null; } } if (ctx?.state === 'suspended') ctx.resume(); return ctx; };
 function tone(f, d, type = 'square', v = 0.06, f2 = null, delay = 0) {
-  if (muted || adMute) return; const c = ac(); if (!c) return; const t = c.currentTime + delay;
+  if (muted || adMute || platMute) return; const c = ac(); if (!c) return; const t = c.currentTime + delay;
   const o = c.createOscillator(), g = c.createGain(); o.type = type; o.frequency.setValueAtTime(f, t);
   if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
   g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g).connect(c.destination); o.start(t); o.stop(t + d);
 }
 function noise(d, v = 0.05) {
-  if (muted || adMute) return; const c = ac(); if (!c) return; const b = c.createBuffer(1, c.sampleRate * d, c.sampleRate), a = b.getChannelData(0);
+  if (muted || adMute || platMute) return; const c = ac(); if (!c) return; const b = c.createBuffer(1, c.sampleRate * d, c.sampleRate), a = b.getChannelData(0);
   for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 2 - 1) * (1 - i / a.length);
   const s = c.createBufferSource(), g = c.createGain(), f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
   s.buffer = b; g.gain.value = v; s.connect(f).connect(g).connect(c.destination); s.start();
 }
 export const sfx = {
-  setMuted(m) { muted = !!m; apply(); }, setAdMute(m) { adMute = !!m; apply(); }, get muted() { return muted; }, get adMuted() { return adMute; },
+  setMuted(m) { muted = !!m; apply(); }, setAdMute(m) { adMute = !!m; apply(); }, setPlatformMute(m) { platMute = !!m; apply(); }, get platformMuted() { return platMute; }, get muted() { return muted; }, get adMuted() { return adMute; },
   thrust() { const n = performance.now(); if (n - lastThrust > 70) { lastThrust = n; noise(0.08, 0.025); } },
   thud(v) { tone(120, 0.15, 'triangle', Math.min(0.2, v * 0.02), 50); },
   flip(c) { tone(500 + c * 120, 0.12, 'square', 0.05, 900 + c * 150); },

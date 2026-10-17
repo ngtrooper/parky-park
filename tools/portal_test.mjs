@@ -30,10 +30,12 @@ for (const P of ['crazygames', 'poki', 'gamedistribution', 'web']) {
   r.coins = [c0, await p.evaluate(() => window.__pp.save.coins)];
   r.log2 = await p.evaluate(() => (window.__sdkLog || []).join(' '));
   r.hidden = await p.evaluate(() => !document.querySelector('[data-a=dad]') || true);
+  if (P === 'crazygames') { await p.evaluate(() => window.__cgSettings({ muteAudio: true })); r.cgMute = await p.evaluate(() => window.__pp.sfx.platformMuted);
+    await p.evaluate(() => window.__cgSettings({ muteAudio: false })); r.cgUnmute = !(await p.evaluate(() => window.__pp.sfx.platformMuted)); }
   r.errs = errs;
   const has = s => r.log2.includes(s);
   let ok = !leaks.length && !errs.length && r.coins[1] > r.coins[0];
-  if (P === 'crazygames') ok &&= has('init') && has('gameplayStart') && has('ad:rewarded') && has('data.set:parkypark_v1') && r.mutedDuringAd && r.adsOn;
+  if (P === 'crazygames') ok &&= has('init') && has('gameplayStart') && has('ad:rewarded') && has('data.set:parkypark_v1') && has('settingsListener') && r.cgMute && r.cgUnmute && r.mutedDuringAd && r.adsOn;
   if (P === 'poki') ok &&= has('loadingFinished') && has('gameplayStart') && has('gameplayStop') && has('rewardedBreak') && r.mutedDuringAd && r.adsOn;
   if (P === 'gamedistribution') ok &&= has('showAd:rewarded') && r.mutedDuringAd && r.adsOn;
   if (P === 'web') ok &&= !r.adsOn && /Free daily bonus/.test(r.dailyBtn);

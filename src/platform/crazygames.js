@@ -24,6 +24,9 @@ export default {
   async init(h) { hooks = h; try { await loadScript('https://sdk.crazygames.com/crazygames-sdk-v3.js'); SDK = window.CrazyGames.SDK; await SDK.init();
       // one-time copy of any pre-existing local save into the Data module
       if (ok() && !SDK.data.getItem('parkypark_v1')) { const old = safeLocal.getItem('parkypark_v1'); if (old) SDK.data.setItem('parkypark_v1', old); }
+      // Full Launch requirement: honour the site's muteAudio setting (priority over our in-game toggle)
+      if (ok()) { hooks.platformMute?.(!!SDK.game.settings?.muteAudio);
+        SDK.game.addSettingsChangeListener?.(st => hooks.platformMute?.(!!st?.muteAudio)); }
       SDK.game.loadingStart?.();
     } catch (e) { console.warn('CrazyGames SDK unavailable', e); SDK = null; } },
   loadingDone() { if (ok()) SDK.game.loadingStop?.(); },

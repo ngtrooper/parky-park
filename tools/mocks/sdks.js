@@ -5,7 +5,7 @@ const adRun = (cbStart, ms = 300) => new Promise(r => { cbStart?.(); window.__in
 if (window.__MOCK === 'crazygames') {
   const mem = {};
   window.CrazyGames = { SDK: { environment: 'local', async init() { log('init'); },
-    game: { gameplayStart: () => log('gameplayStart'), gameplayStop: () => log('gameplayStop'), happytime: () => log('happytime'), loadingStart: () => log('loadingStart'), loadingStop: () => log('loadingStop') },
+    game: { settings: { muteAudio: false, disableChat: false }, addSettingsChangeListener: f => { window.__cgSettings = f; log('settingsListener'); }, gameplayStart: () => log('gameplayStart'), gameplayStop: () => log('gameplayStop'), happytime: () => log('happytime'), loadingStart: () => log('loadingStart'), loadingStop: () => log('loadingStop') },
     ad: { requestAd(t, cb) { log('ad', t); setTimeout(() => { cb.adStarted(); window.__mutedDuringAd = window.__pp?.sfx?.muted || window.__adMuted?.(); setTimeout(() => cb.adFinished(), 300); }, 50); } },
     data: { getItem: k => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); log('data.set', k); }, removeItem: k => delete mem[k], clear: () => { for (const k in mem) delete mem[k]; log('data.clear'); } } } };
 }

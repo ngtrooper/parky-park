@@ -9,7 +9,7 @@ import { platform } from './platform/index.js';
 // ---------- platform (web / crazygames / poki / gamedistribution) ----------
 let adHold = false, blurHold = false;
 const holdOn = () => adHold || blurHold;
-await platform.init({ pause() { adHold = true; sfx.setAdMute(true); }, resume() { adHold = false; sfx.setAdMute(false); } });
+await platform.init({ pause() { adHold = true; sfx.setAdMute(true); }, resume() { adHold = false; sfx.setAdMute(false); }, platformMute(m) { sfx.setPlatformMute(m); document.querySelectorAll('[data-a=snd]').forEach(b => b.textContent = m || save?.muted ? '🔇' : '🔊'); } });
 const store = platform.storage;
 const adsOn = () => platform.adsOn();
 const showRewarded = async cb => { const ok = await platform.rewarded(); if (ok) cb?.(); return ok; };
@@ -385,10 +385,10 @@ class Play extends Phaser.Scene {
       <div class="pars"><span class="bestline">${LA ? `best spot #${save.bestSpot} · farthest ${save.bestDist}m` : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div>
       ${LA && save.streak ? `<div class="streak">🔥 ${save.streak} park streak · +${Math.min(5, save.streak) * 10}%</div>` : ''}</div></div>
       <div class="warn"></div>${LA ? '<div class="spotarrow"></div>' : ''}
-      <div class="topbtns p"><button data-a="snd">${save.muted ? '🔇' : '🔊'}</button><button data-a="r">↻ R</button><button data-a="m">☰</button></div></div>`);
+      <div class="topbtns p"><button data-a="snd">${save.muted || sfx.platformMuted ? '🔇' : '🔊'}</button><button data-a="r">↻ R</button><button data-a="m">☰</button></div></div>`);
     hud.querySelector('[data-a=r]').onclick = () => this.restartLevel();
     hud.querySelector('[data-a=m]').onclick = () => showMenu();
-    hud.querySelector('[data-a=snd]').onclick = e => { save.muted = !save.muted; sfx.setMuted(save.muted); persist(); e.currentTarget.textContent = save.muted ? '🔇' : '🔊'; e.currentTarget.blur(); };
+    hud.querySelector('[data-a=snd]').onclick = e => { save.muted = !save.muted; sfx.setMuted(save.muted); persist(); e.currentTarget.textContent = save.muted || sfx.platformMuted ? '🔇' : '🔊'; e.currentTarget.blur(); };
     ui.insertBefore(hud, ui.firstChild);
     this.hTimer = hud.querySelector('.timer'); this.hFuel = hud.querySelector('.fuel i'); this.hBoost = hud.querySelector('.boost i'); this.hStyle = hud.querySelector('.style');
     this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3'); this.hWarn = hud.querySelector('.warn'); this.hArrow = hud.querySelector('.spotarrow'); this.hSpeed = hud.querySelector('.speedo');
@@ -659,5 +659,5 @@ class Play extends Phaser.Scene {
 window.__pp = { platform, sfx, LEVELS, save, startLevel, startLaunch, openShop, showMenu, playLaunch: (seed, inputs) => { menuEl?.remove(); menuEl = null; closeShop(); game.scene.getScene('play').scene.restart({ mode: 'launch', seed, replay: inputs }); }, play: (id, inputs) => { menuEl?.remove(); menuEl = null; game.scene.getScene('play').scene.restart({ id, replay: inputs }); } };
 const game = new Phaser.Game({ type: Phaser.AUTO, banner: false, parent: 'game', width: 960, height: 540, pixelArt: true, backgroundColor: '#12141c',
   scale: { mode: Phaser.Scale.RESIZE }, scene: [Play] });
-buildTouch();
+buildTouch(); window.__pp.game = game;
 game.events.once('ready', () => { document.getElementById('loading')?.remove(); platform.loadingDone(); if (location.hash.startsWith('#l')) startLevel(+location.hash.slice(2)); else showMenu(); });
