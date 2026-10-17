@@ -24,7 +24,7 @@ export function humanRun(L, i, boostF = 999, seed = 1, lag = 9) {
 }
 const BOOSTS = [0, 15, 30, 45, 60, 80, 999];
 export function reachable(L, i) { for (const bf of BOOSTS) { let ok = 0; for (const s of [1, 2, 3]) { const S = humanRun(L, i, bf, s * (i + 3)); if (S.parked && S.parkedSpot === i) ok++; } if (ok >= 2) return bf; } return null; }
-export const TIERS = [0, 2, 4, 6, 8, 10, 13, 24];
+export const TIERS = [0, 6, 12, 18, 24, 30, 39, 72];
 if ((process.argv[1] || '').endsWith('human_bot.mjs')) {
   const P = path();
   for (const n of TIERS) { const out = [];

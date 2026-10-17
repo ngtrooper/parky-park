@@ -7,7 +7,7 @@ const waited = S.rf === -1 && S.rivals.every(r => !r.arrived) && S.taken.size ==
 S.step({ right: true }); const went = S.started && S.events.includes('go');
 console.log('600 idle frames: rivals waiting =', waited, '| first input fires GO =', went); if (!waited || !went) ok = false;
 const sig = new Set(); let snOk = true; const pers = {}, mis = {};
-for (let seed = 1; seed <= 300; seed++) { const L = genLot(seed, { boostCap: 2, air: 2 }, false, 2);
+for (let seed = 1; seed <= 300; seed++) { const L = genLot(seed, { boostCap: 6, air: 6 }, false, 2);
   L.rivals.forEach(r => { sig.add([r.spot, r.arrive, Math.round(r.arcH)].join()); pers[r.pers] = (pers[r.pers] || 0) + 1; mis[r.mistake || 'clean'] = (mis[r.mistake || 'clean'] || 0) + 1; });
   const sn = L.lotcars.filter(o => o.beh === 'snatch').map(o => o.spot);
   if (sn.some(i => i < 4) || sn.some((i, k) => k && i - sn[k - 1] < 3)) snOk = false; }

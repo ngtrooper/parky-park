@@ -129,3 +129,4 @@ button.danger{background:#ff8a8a;font-size:14px}
 .touch .pad small{position:absolute;bottom:-18px;left:0;right:0;text-align:center;color:#fff;font-weight:900;font-size:11px;letter-spacing:1px;text-shadow:1px 1px 0 #000}
 .touch .tr{padding-right:env(safe-area-inset-right)}
 @media (max-height:500px){.touch .pad{width:140px;height:140px}.touch .pad b{width:52px;height:52px;margin:-26px}}
+.garage .fl i{width:26px}.dailyad{margin:8px 0;text-align:center}

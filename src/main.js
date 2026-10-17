@@ -3,7 +3,7 @@ import { LEVELS } from './levels.js';
 import { createSim, starsFor, DT, CAR_W, CAR_H, FAIL_WHY, WARN, GRAV_LA } from './sim.js';
 import { makeArt, SKIES } from './art.js';
 import { sfx } from './sfx.js';
-import { genLot, dailySeed, UPGRADES, costOf, payout, flipMult } from './launch.js';
+import { genLot, dailySeed, UPGRADES, costOf, payout, flipMult, UPGRADE_VER, progressOf } from './launch.js';
 import { showRewarded, onRunStart, isNative, adsOn } from './ads.js';
 
 // ---------- save ----------
@@ -12,6 +12,8 @@ const save = Object.assign({ stars: {}, best: {}, slips: 0, coins: 0, up: {}, ru
   stats: { parks: 0, steals: 0, triple: 0, dailies: 0 }, skin: 'white' }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'));
 if (save.econ !== 2) { // v2 economy: old saves were inflated by the flip exploit; keep upgrades, trim coins
   save.coins = Math.min(save.coins, 150); save.econ = 2; }
+if (save.upVer !== UPGRADE_VER) { for (const k in save.up) save.up[k] = (save.up[k] || 0) * 3; save.upVer = UPGRADE_VER; } // 3x levels: old level n -> 3n
+save.flames = save.flames || ['classic']; save.flame = save.flame || 'classic';
 for (const u of UPGRADES) if ((save.up[u.k] || 0) > u.max) save.up[u.k] = u.max;
 
 // ---------- car skins (unlocked by milestones) ----------
@@ -24,6 +26,24 @@ const SKINS = [
   { k: 'neon', name: 'Neon', tint: 0xff5ad8, req: '5-park streak', ok: () => save.bestStreak >= 5 },
   { k: 'stealth', name: 'Stealth', tint: 0x6a6f7c, req: 'Park in spot #10', ok: () => save.bestSpot >= 10 },
 ];
+// ---------- thruster flame colours (bought with coins) ----------
+const FLAMES = [
+  { k: 'classic', name: 'Classic', price: 0, t: [0xfff3a0, 0xffa23f, 0xff5a3c, 0xcccccc] },
+  { k: 'blue', name: 'Ion Blue', price: 150, t: [0xe0f4ff, 0x5ac8ff, 0x2f6fe0] },
+  { k: 'green', name: 'Toxic', price: 200, t: [0xeaffd0, 0x7dff4a, 0x22b33a] },
+  { k: 'purple', name: 'Void', price: 250, t: [0xf0d8ff, 0xb05aff, 0x6a2fd0] },
+  { k: 'pink', name: 'Bubblegum', price: 300, t: [0xffe0f0, 0xff7ac8, 0xff3a8c] },
+  { k: 'gold', name: 'Gold Rush', price: 450, t: [0xfffbe0, 0xffd23f, 0xd4a017] },
+  { k: 'plasma', name: 'Plasma White', price: 600, t: [0xffffff, 0xe8f0ff, 0xc8d8ff] },
+  { k: 'rainbow', name: 'Rainbow', price: 900, t: null },
+];
+const flameTint = () => { const f = FLAMES.find(x => x.k === save.flame) || FLAMES[0];
+  if (!f.t) return Phaser.Display.Color.HSVToRGB((performance.now() / 600 + Math.random() * 0.15) % 1, 0.85, 1).color;
+  return f.t[Math.floor(Math.random() * f.t.length)]; };
+// ---------- daily ad gift (native / ?mockads only) ----------
+const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+const dailyGift = () => 40 + Math.round(360 * progressOf(save.up)); // scales with upgrade progress
+const untilMidnight = () => { const d = new Date(), m = new Date(d); m.setHours(24, 0, 0, 0); const s = Math.max(0, (m - d) / 1000 | 0); return `${s / 3600 | 0}h ${String((s / 60 | 0) % 60).padStart(2, '0')}m`; };
 const skinTint = () => (SKINS.find(k => k.k === save.skin && k.ok()) || SKINS[0]).tint;
 const unlockedSkins = () => SKINS.filter(k => k.ok()).map(k => k.k);
 // ---------- quick-win challenge (one per run, small reward, usually achievable) ----------
@@ -151,6 +171,9 @@ function openShop(after) {
         <button data-k="${u.k}" ${maxed || save.coins < c ? 'disabled' : ''}>${maxed ? 'MAX' : '🪙 ' + c}</button></div>`; }).join('')}</div>
       <div class="garage"><b>GARAGE</b>${SKINS.map(k => `<button class="sk ${save.skin === k.k ? 'sel' : ''}" data-s="${k.k}" ${k.ok() ? '' : 'disabled'} title="${k.req}">
         <i style="background:#${k.tint.toString(16).padStart(6, '0')}"></i>${k.ok() ? k.name : '🔒 ' + k.req}</button>`).join('')}</div>
+      <div class="garage flames"><b>FLAMES</b>${FLAMES.map(f => { const own = save.flames.includes(f.k), sw = f.t ? `background:linear-gradient(90deg,${f.t.map(c => '#' + c.toString(16).padStart(6, '0')).join(',')})` : 'background:linear-gradient(90deg,red,orange,yellow,lime,cyan,blue,magenta)';
+        return `<button class="sk fl ${save.flame === f.k ? 'sel' : ''}" data-f="${f.k}" ${!own && save.coins < f.price ? 'disabled' : ''}><i style="${sw}"></i>${f.name}${own ? '' : ' 🪙 ' + f.price}</button>`; }).join('')}</div>
+      ${adsOn() ? `<div class="dailyad">${save.dailyAd === localDay() ? `<button disabled>🎁 Daily gift claimed · next in ${untilMidnight()}</button>` : `<button class="main" data-a="dad">🎁 Watch ad: +${dailyGift()} coins (daily)</button>`}</div>` : ''}
       <div class="btns"><button class="main" data-a="go">▶ Run again (Enter)</button><button data-a="menu">Menu</button><button class="danger" data-a="reset">⟲ Reset progress</button></div>`;
     shopEl.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
       const u = UPGRADES.find(x => x.k === b.dataset.k), l = save.up[u.k] || 0, c = costOf(u, l);
@@ -159,6 +182,11 @@ function openShop(after) {
     const rb = shopEl.querySelector('[data-a=reset]');
     rb.onclick = () => { if (!rb.dataset.armed) { rb.dataset.armed = 1; rb.textContent = '⚠ Tap again: erase ALL coins, upgrades, stars & skins'; setTimeout(() => { if (rb.isConnected) { delete rb.dataset.armed; rb.textContent = '⟲ Reset progress'; } }, 4000); return; }
       Object.keys(localStorage).filter(k => k.startsWith('parkypark')).forEach(k => localStorage.removeItem(k)); location.reload(); };
+    shopEl.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { const f = FLAMES.find(x => x.k === b.dataset.f);
+      if (!save.flames.includes(f.k)) { if (save.coins < f.price) return; save.coins -= f.price; save.flames.push(f.k); sfx.buy(); } else sfx.click();
+      save.flame = f.k; persist(); draw(); });
+    const dad = shopEl.querySelector('[data-a=dad]');
+    if (dad) dad.onclick = () => { dad.disabled = true; showRewarded(() => { if (save.dailyAd === localDay()) return; const g = dailyGift(); save.coins += g; save.dailyAd = localDay(); persist(); sfx.buy(); draw(); }).finally?.(() => shopEl?.isConnected && draw()); };
     shopEl.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { save.skin = b.dataset.s; persist(); sfx.click(); draw(); });
     shopEl.querySelector('[data-a=go]').onclick = () => startLaunch(after?.daily);
     shopEl.querySelector('[data-a=menu]').onclick = () => { closeShop(); showMenu(); };
@@ -230,7 +258,7 @@ class Play extends Phaser.Scene {
     // particles
     this.flameAngle = 90;
     this.flame = this.add.particles(0, 0, 'puff', { angle: { onEmit: () => this.flameAngle + Phaser.Math.Between(-14, 14) }, lifespan: { min: 220, max: 420 }, speed: { min: 60, max: 160 }, scale: { start: 1.4, end: 0.2 },
-      alpha: { start: 1, end: 0 }, tint: [0xfff3a0, 0xffa23f, 0xff5a3c, 0xcccccc], emitting: false }).setDepth(4);
+      alpha: { start: 1, end: 0 }, tint: { onEmit: () => flameTint() }, emitting: false }).setDepth(4);
     this.sparks = this.add.particles(0, 0, 'spark', { lifespan: 900, speed: { min: 120, max: 420 }, gravityY: 600, scale: { start: 2, end: 0.5 },
       tint: [0xffd23f, 0x3ddc84, 0xffffff, 0xff7a1a, 0x7fd3ff], emitting: false }).setDepth(6);
     this.lines = this.add.particles(0, 0, 'spark', { lifespan: 380, speedX: { min: -2600, max: -1800 }, scaleX: { start: 22, end: 12 }, scaleY: 0.8,
