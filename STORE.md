@@ -37,7 +37,7 @@ JDK 21 is in `~/jdk`, and the Android SDK (platform/build-tools 35) is in `~/and
    - Not collected by us
 7. **Ads declaration:** "Contains ads: Yes". Target audience must be 13+ (not "designed for children"), to avoid Families policy requirements.
 8. **AdMob:**
-   - Create a free AdMob account (*Franklin*). Add the Android app and create 1 interstitial and 1 rewarded unit.
+   - Create a free AdMob account (*Franklin*). Add the Android app and create 1 interstitial and 1 rewarded unit. The rewarded ad is used only for "Watch ad: 2x coins" on the results screen (any run that earned coins). There is no paid continue. Interstitials show every ~3 runs, between runs only.
    - Send me the IDs. I replace the `TEST_IDS` in `src/ads.js`, set `isTesting:false`, and update `APPLICATION_ID` in `android/app/src/main/AndroidManifest.xml`.
    - Configure the UMP consent message (GDPR) in AdMob → Privacy & messaging. The code already calls `requestConsentInfo`/`showConsentForm`.
 9. **app-ads.txt:** AdMob gives a line like `google.com, pub-XXXXXXXX, DIRECT, f08c47fec0942fa0`.

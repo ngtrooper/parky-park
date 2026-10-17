@@ -19,9 +19,9 @@ export const costOf = (u, lvl) => Math.round(u.base * Math.pow(1.4, lvl) / 5) * 
 export function tuneFrom(up) {
   const c = k => { const u = UPGRADES.find(x => x.k === k); return cv(Math.min(up[k] || 0, u.max), u.max); };
   return {
-    tune: { boostCap: 30 + 75 * c('boostCap'), boostPow: 2 + 6 * c('boostPow'), lift: 1 + 0.3 * c('thrust'), steer: 1 + 1 * c('thrust'),
+    tune: { boostCap: 45 + 75 * c('boostCap'), boostPow: 2 + 6 * c('boostPow'), lift: 1 + 0.3 * c('thrust'), steer: 1 + 1 * c('thrust'),
       spin: 1 + 0.8 * c('spin'), grip: 1 + 1 * c('grip'), lotTop: 4.5 + 3 * c('grip'), top: 9.5, kick: 2.1 + 0.9 * c('boostPow'), drag: 0.022 - 0.005 * c('thrust') },
-    fuel: 30 + 70 * c('air'),
+    fuel: 45 + 70 * c('air'),
     mult: 1 + 0.1 * (up.mult || 0),
   };
 }
@@ -31,7 +31,7 @@ const KINDS = ['sedan', 'suv', 'van', 'truck', 'mini'];
 const SZ = { sedan: [118, 40], suv: [124, 58], van: [140, 70], truck: [150, 64], mini: [96, 36] };
 export const SPOT_VALUES = [20, 30, 45, 60, 80, 100, 125, 155, 190, 230];
 // Spot distances (m past the kicker). Tuned to a human-ish flight model (tools/range.mjs): fresh reaches #1-2, each upgrade tier adds about one.
-export const LADDER = [16, 34, 56, 78, 100, 120, 142, 166, 186, 202];
+export const LADDER = [12, 24, 38, 60, 86, 114, 142, 168, 192, 212];
 
 export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   const R = rng(seed), T = tuneFrom(up), gy = 620;
@@ -47,23 +47,24 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
   solids.push({ t: 'wall', r: [-60, -600, 20, 1600] });
   const nSpots = 10;
   for (let i = 0; i < nSpots; i++) {
-    const w = Math.max(76, 118 - i * 4 - R() * 14);
+    const w = Math.max(112, 160 - i * 4 - R() * 10); // big, wide spots
     const lk = KINDS[Math.floor(R() * KINDS.length)], rk = KINDS[Math.floor(R() * KINDS.length)];
     const center = lipX + LADDER[i] * 60 * (0.96 + R() * 0.08);
     const end = Math.max(x, center - w / 2 - SZ[lk][0]);
     let cx = x;
     while (cx < end - 140) {
       const roll = R();
-      if (roll < 0.55) { const k = KINDS[Math.floor(R() * KINDS.length)]; const [w, h] = SZ[k];
+      if (roll < 0.38) { const k = KINDS[Math.floor(R() * KINDS.length)]; const [w, h] = SZ[k];
         if (cx + w > end) break; solids.push({ t: 'car', kind: k, r: [cx, gy - h, w, h] }); cx += w + 4 + R() * 30; }
       else if (roll < 0.7 && i > 1 && cx + 200 < end) { const pw = 120 + R() * 80; pits.push([cx, cx + pw, gy + 30]); solids.push({ t: 'pit', r: [cx, gy, pw, 200] }); cx += pw + 20; }
       else if (roll < 0.85) { solids.push({ t: 'cone', r: [cx, gy - 22, 18, 22] }); cx += 40 + R() * 40; }
       else cx += 60 + R() * 80;
     }
     x = end;
-    solids.push({ t: 'car', kind: lk, r: [x, gy - SZ[lk][1], SZ[lk][0], SZ[lk][1]] }); x += SZ[lk][0];
+    const flL = i >= 3 && R() < 0.5, flR = i >= 3 && R() < 0.5; // fewer cars boxing spots in
+    if (flL) solids.push({ t: 'car', kind: lk, r: [x, gy - SZ[lk][1], SZ[lk][0], SZ[lk][1]] }); x += flL ? SZ[lk][0] : 30;
     spots.push({ x, y: gy, w, value: SPOT_VALUES[i] }); x += w;
-    solids.push({ t: 'car', kind: rk, r: [x, gy - SZ[rk][1], SZ[rk][0], SZ[rk][1]] }); x += SZ[rk][0] + 20;
+    if (flR) solids.push({ t: 'car', kind: rk, r: [x, gy - SZ[rk][1], SZ[rk][0], SZ[rk][1]] }); x += (flR ? SZ[rk][0] : 30) + 20;
   }
   // ground pieces with holes for pits
   let gx = 900; const sortedPits = [...pits].sort((a, b) => a[0] - b[0]);
@@ -82,8 +83,8 @@ export function genLot(seed, up = {}, daily = false, bestSpot = 0) {
     else if (roll < 0.5 && i >= 4 && i - lastSnatch > 2 && (lastSnatch = i)) lotcars.push({ spot: i, beh: 'snatch', kind: 'sedan', x: cx + 420, y: gy - 300, w: Math.min(sp.w - 6, 96), h: 36 });
   }
   // rivals: start with you on their own ramp lane, race for the spots just past your best
-  const prog = progressOf(up), nR = Math.min(4, 2 + Math.round(prog * 2));
-  const vr = 9 + prog * 5, vf = 10 + prog * 4.5, rivals = [];
+  const prog = progressOf(up), nR = Math.min(4, 1 + Math.round(prog * 3)); // fewer rivals early
+  const vr = 7 + prog * 7, vf = 7.5 + prog * 7, rivals = []; // slower rivals early
   const base = Math.max(1, Math.min(nSpots - 2, bestSpot));
   const PERS = ['cautious', 'reckless', 'showoff'];
   for (let j = 0; j < nR; j++) {

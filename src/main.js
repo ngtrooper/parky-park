@@ -538,7 +538,7 @@ class Play extends Phaser.Scene {
         ${newSkins.length ? `<div class="nb">🎨 NEW SKIN: ${newSkins.map(k => SKINS.find(x => x.k === k).name).join(', ')}! (Shop)</div>` : ''}
         ${next ? `<div class="hint">${save.coins >= next.c ? '✅ You can afford ' + next.u.name + '!' : 'Next: ' + next.u.name + ' at 🪙' + next.c}</div>` : ''}</div></div>
       ${L.daily ? `<div class="daily">🏆 Daily best today: 🪙${save.daily[L.seed]} · leaderboard coming soon <button data-a="share">📋 Copy result</button></div>` : ''}
-      ${adsOn() ? `<div class="btns"><button class="adbtn" data-a="ad2">📺 Watch ad: 2x coins</button>${!S.parked && !S.revived ? '<button class="adbtn" data-a="adc">📺 Watch ad: continue</button>' : ''}</div>` : ''}
+      ${adsOn() && p.total > 0 ? `<div class="btns"><button class="adbtn" data-a="ad2">📺 Watch ad: 2x coins</button></div>` : ''}
       <div class="btns"><button class="main" data-a="r">↻ Run again (R/Enter)</button><button data-a="s">🛠 Shop</button><button data-a="m">Menu</button></div></div></div>`);
     // coin count-up with ticks
     const cnt = overlay.querySelector('.cnt'); let shown = 0; const step = Math.max(1, Math.ceil(p.total / 24));
@@ -546,16 +546,14 @@ class Play extends Phaser.Scene {
     if (p.total > 0) setTimeout(tick, 250);
     overlay.querySelector('[data-a=r]').onclick = () => startLaunch(L.daily);
     const cancel = () => { clearTimeout(this.autoT); const c = overlay?.querySelector('.auto'); if (c) c.remove(); };
-    const ad2 = overlay.querySelector('[data-a=ad2]'), adc = overlay.querySelector('[data-a=adc]'), sh = overlay.querySelector('[data-a=share]');
+    const ad2 = overlay.querySelector('[data-a=ad2]'), sh = overlay.querySelector('[data-a=share]');
     if (ad2) { ad2.addEventListener('pointerdown', cancel); if (p.total <= 0) ad2.style.display = 'none';
       ad2.onclick = () => showRewarded(() => { save.coins += p.total; persist(); ad2.disabled = true; ad2.textContent = `✅ +${p.total} bonus coins`; this.toast('2x COINS!'); }); }
-    if (adc) { adc.addEventListener('pointerdown', cancel);
-      adc.onclick = () => showRewarded(() => { save.coins -= p.total; if (S.parked === false) save.streak = prevStreak; persist(); overlay?.remove(); overlay = null; this.done = false; S.revive(); setZones(true); this.toast('BACK IN THE RACE!'); }); }
     if (sh) { sh.addEventListener('pointerdown', cancel); sh.onclick = () => { navigator.clipboard?.writeText(share).then(() => { sh.textContent = '✅ Copied!'; }).catch(() => { sh.textContent = share; }); }; }
     overlay.querySelector('[data-a=s]').addEventListener('pointerdown', cancel); overlay.querySelector('[data-a=m]').addEventListener('pointerdown', cancel);
     overlay.querySelector('.panel').addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') startLaunch(L.daily); });
-    if (!S.parked) { overlay.querySelector('.btns:last-child').insertAdjacentHTML('beforebegin', '<div class="auto">next run in 3s… (tap to go now)</div>');
-      this.autoT = setTimeout(() => { if (!shopEl && !menuEl && this.done && this.scene.isActive()) startLaunch(L.daily); }, 3000); }
+    if (!S.parked) { overlay.querySelector('.btns:last-child').insertAdjacentHTML('beforebegin', '<div class="auto">next run in 1.5s… (tap to go now)</div>');
+      this.autoT = setTimeout(() => { if (!shopEl && !menuEl && this.done && this.scene.isActive()) startLaunch(L.daily); }, 1500); }
     this.events.once('shutdown', () => clearTimeout(this.autoT));
     overlay.querySelector('[data-a=s]').onclick = () => openShop({ daily: L.daily });
     overlay.querySelector('[data-a=m]').onclick = () => showMenu();

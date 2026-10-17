@@ -75,7 +75,8 @@ export function createSim(L) {
     const fuelRate = (L.fuelRate || 1) * (inp.assist ? 0.65 : 1); // phone scheme is coarser: cheaper thrust
     S.thrusting = { up: false, l: false, r: false };
     // lift (thrusters along car "up")
-    if (inp.up && S.fuel > 0) { Body.applyForce(car, car.position, { x: ux * LIFT * T.lift * m, y: uy * LIFT * T.lift * m });
+    const liftK = LA ? Math.max(0, Math.min(1, (car.velocity.y + 7) / 4)) : 1; // launch: thrust fades when already climbing fast (no moon shots)
+    if (inp.up && S.fuel > 0) { Body.applyForce(car, car.position, { x: ux * LIFT * T.lift * m * liftK, y: uy * LIFT * T.lift * m * liftK });
       S.fuel -= 0.2 * fuelRate; S.thrusting.up = true; }
     // fan suction: glued to the ramp surface
     // boost gauge: extra top speed + push on the ground, forward shove in the air
@@ -195,7 +196,7 @@ export function createSim(L) {
     if (g && !wasG) {
       if (S.airFlips > 0) {
         // flips are banked as a PARKING multiplier (+25% per clean flip); unparked they pay only a little
-        if (Math.cos(car.angle) > 0.7) { const n = S.airFlips; S.cleanFlips += n; S.flipBank += 3 * n; S.style += 50 * S.combo; S.events.push('flipland:' + n + ':' + S.cleanFlips); }
+        if (Math.cos(car.angle) > (LA ? 0.5 : 0.7)) { const n = S.airFlips; S.cleanFlips += n; S.flipBank += 3 * n; S.style += 50 * S.combo; S.events.push('flipland:' + n + ':' + S.cleanFlips); }
         else { S.sloppyFlips += S.airFlips; S.flipBank += 1 * S.airFlips; S.events.push('bail:' + S.airFlips); }
       }
       S.combo = 0; S.airRot = 0; S.airFlips = 0; }
@@ -204,13 +205,13 @@ export function createSim(L) {
     for (let i = 0; i < SPOTS.length; i++) {
       if (S.taken.has(i)) continue;
       const sp = S.spotRect(i);
-      if (b.min.x >= sp.x - 8 && b.max.x <= sp.x + sp.w + 8 && Math.abs(b.max.y - sp.y) < 12 && Math.cos(car.angle) > 0.85) { inside = true; which = i; break; }
+      if (b.min.x >= sp.x - 8 && b.max.x <= sp.x + sp.w + 8 && Math.abs(b.max.y - sp.y) < 14 && Math.cos(car.angle) > 0.7) { inside = true; which = i; break; }
     }
     S.inSpot = inside; S.spotIdx = which;
     const sp0 = SPOTS[Math.max(0, which)];
     const rel = sp0.on !== undefined ? movers[sp0.on].b.velocity : { x: 0, y: 0 };
-    const slow = Math.hypot(car.velocity.x - rel.x, car.velocity.y - rel.y) < 1.0;
-    if (inside && g && slow) { S.parkHold++; if (S.parkHold >= 18) { S.parked = true; S.parkedSpot = which;
+    const slow = Math.hypot(car.velocity.x - rel.x, car.velocity.y - rel.y) < (LA ? 1.5 : 1.0);
+    if (inside && g && slow) { S.parkHold++; if (S.parkHold >= (LA ? 12 : 18)) { S.parked = true; S.parkedSpot = which;
       const r = S.rivals.find(r => r.spot === which && !r.arrived);
       const rb = S.rivals.find(r => r.spot === which && (r.blocked || (!r.arrived && !r.never && r.arrive - S.rf < 120)));
       if (rb || S.lot.some(o => o.spot === which && o.beh === 'snatch' && o.phase === 'go')) { S.stolen = true; S.events.push('stolen'); }
@@ -244,16 +245,21 @@ export function createSim(L) {
       // SO-CLOSE forgiveness: within ~6m of a free spot you never stall; slow + upright = gentle magnet (auto-hop over a flanking car)
       let near = null;
       for (let i = 0; i < SPOTS.length; i++) { if (S.taken.has(i)) continue; const r = S.spotRect(i), dx = r.x + r.w / 2 - car.position.x;
-        if (Math.abs(dx) < 360 && (!near || Math.abs(dx) < Math.abs(near.dx))) near = { i, dx }; }
+        if (Math.abs(dx) < 480 && (!near || Math.abs(dx) < Math.abs(near.dx))) near = { i, dx }; }
       S.nearSpot = near;
-      if (near && g && !S.inSpot && sp < 2.6 && Math.cos(car.angle) > 0.6 && !(near.dx > 0 ? inp.left : inp.right)) {
-        S.magF = (S.magF || 0) + 1; const want = Math.sign(near.dx) * Math.min(2.4, Math.abs(near.dx) * 0.02 + 0.5);
-        Body.setVelocity(car, { x: car.velocity.x + (want - car.velocity.x) * 0.12, y: car.velocity.y });
-        if (S.magF > 24 && sp < 0.6 && t - S.lastHop > 40) { S.lastHop = t; S.magF = 0; // blocked by a parked car: hop toward the spot
+      if (near && g && !S.inSpot && sp < 3.2 && Math.cos(car.angle) > 0.5 && !(near.dx > 0 ? inp.left : inp.right)) {
+        S.magF = (S.magF || 0) + 1; const want = Math.sign(near.dx) * Math.min(3, Math.abs(near.dx) * 0.025 + 0.8);
+        Body.setVelocity(car, { x: car.velocity.x + (want - car.velocity.x) * 0.18, y: car.velocity.y });
+        if (S.magF > 14 && sp < 0.8 && t - S.lastHop > 30) { S.lastHop = t; S.magF = 0; // blocked by a parked car: hop toward the spot
           Body.setVelocity(car, { x: Math.max(-3.2, Math.min(3.2, near.dx * 0.02)), y: -HOP * 1.05 }); S.events.push('magnet'); }
       } else S.magF = 0;
       if (near && S.inSpot && g) Body.setVelocity(car, { x: car.velocity.x * 0.85, y: car.velocity.y }); // settle into it
-      if (near) { S.idleF = Math.min(S.idleF, 120); S.slowF = Math.min(S.slowF, 120); }
+      S.nearF = near && g && !S.inSpot ? (S.nearF || 0) + 1 : 0;
+      if (near && S.nearF < 300) { S.idleF = Math.min(S.idleF, 120); S.slowF = Math.min(S.slowF, 120); } // grace near spots (5s max)
+      // quick fail: no boost AND no air, on the ground, and no free spot within roll-in range -> end in ~0.6s
+      const dry = S.fuel < 3 && S.boost < 3;
+      S.dryF = dry && past && g && !near && !S.inSpot ? (S.dryF || 0) + 1 : 0;
+      if (S.dryF > 36) S.fail('OUT OF JUICE');
       // wedged while trying to move: free pop-hop every 1.25s so you can wriggle out
       if (S.slowF > 0 && S.slowF % 75 === 0 && g && any) { Body.setVelocity(car, { x: S.facing * 2.5, y: -HOP * 0.9 }); S.events.push('unstick'); }
       const juice = S.fuel >= 3 || S.boost >= 3;

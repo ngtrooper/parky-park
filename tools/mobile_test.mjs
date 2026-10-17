@@ -1,4 +1,4 @@
-// Phone emulation: tutorial, 2-zone controls, ads mock (2x coins, continue, interstitial pacing), portrait layout.
+// Phone emulation: tutorial, 2-zone controls, ads mock (2x coins only, interstitial pacing), portrait layout.
 import { chromium, devices } from 'playwright';
 const URL = process.argv[2] || 'http://localhost:4173/';
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -21,17 +21,15 @@ await p.waitForTimeout(2200); await p.screenshot({ path: 'shots/phone_flight.png
 const st = await p.evaluate(() => { const S = window.__pp.scene.sim; return { x: S.car.position.x | 0, lip: window.__pp.scene.L.lipX, started: S.started }; });
 await p.evaluate(([x, y]) => document.querySelector('.zones').dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: x, clientY: y, bubbles: true, pointerType: 'touch' })), [rx, y]);
 console.log('tutorial dismissed:', tutGone, '| holding RIGHT zone 2.2s -> car x', st.x, '(lip at', st.lip + ')', 'started:', st.started);
-// force a fail -> results with ad buttons
-await p.evaluate(() => window.__pp.scene.sim.fail('STUCK')); await p.waitForSelector('[data-a=adc]'); await p.screenshot({ path: 'shots/phone_results_ads.png' });
-const c0 = await p.evaluate(() => window.__pp.save.coins);
-await p.tap('[data-a=adc]'); await p.waitForSelector('.mockad'); await p.waitForSelector('.mockad', { state: 'detached', timeout: 6000 });
-const cont = await p.evaluate(() => ({ failed: window.__pp.scene.sim.failed, done: window.__pp.scene.done, revived: window.__pp.scene.sim.revived }));
-console.log('rewarded continue -> run resumed:', !cont.failed && !cont.done && cont.revived);
-await p.evaluate(() => { const S = window.__pp.scene.sim; S.flipBank = 50; S.fail('STUCK'); }); await p.waitForSelector('[data-a=ad2]');
-const before = await p.evaluate(() => window.__pp.save.coins);
+// zero-coin fail -> no ad button; coin-earning fail -> only '2x coins' (no continue)
+await p.evaluate(() => window.__pp.scene.sim.fail('STUCK')); await p.waitForSelector('.panel.res');
+const noCoinAd = !!(await p.$('[data-a=ad2]')), anyCont = !!(await p.$('[data-a=adc]'));
+await p.evaluate(() => window.__pp.startLaunch()); await p.waitForFunction(() => window.__pp.scene?.sim && !window.__pp.scene.done && window.__pp.scene.sim.frame < 30);
+await p.evaluate(() => { const S = window.__pp.scene.sim; S.flipBank = 50; S.fail('STUCK'); }); await p.waitForSelector('[data-a=ad2]'); await p.screenshot({ path: 'shots/phone_results_ads.png' });
+const before = await p.evaluate(() => window.__pp.save.coins), cont2 = !!(await p.$('[data-a=adc]'));
 await p.tap('[data-a=ad2]'); await p.waitForSelector('.mockad', { state: 'detached', timeout: 6000 }); await p.waitForTimeout(200);
-const after = await p.evaluate(() => window.__pp.save.coins); const cont2 = await p.$('[data-a=adc]');
-console.log('rewarded 2x coins: coins', before, '->', after, '| continue offered again after revive:', !!cont2);
+const after = await p.evaluate(() => window.__pp.save.coins);
+console.log('ad on 0-coin run:', noCoinAd, '| continue button anywhere:', anyCont || cont2, '| rewarded 2x coins: coins', before, '->', after);
 // interstitial pacing: count mock interstitials over 6 run starts
 let inter = 0;
 for (let k = 0; k < 6; k++) { await p.evaluate(() => { window.__pp.startLaunch(); }); await p.waitForTimeout(250); if (await p.$('.mockad')) { inter++; await p.waitForSelector('.mockad', { state: 'detached', timeout: 5000 }); } }

@@ -11,7 +11,7 @@ export function humanRun(L, i, lag = 9, seed = 1) {
     else if (!o.g) {
       if (dx > 300) z.r = o.vy > -1 || o.y > sp.y - 240;
       else { const want = Math.max(-2, Math.min(5, dx * 0.035));
-        if (o.vx > want + 0.8) z.l = z.r = true; else if (o.vx < want - 0.8) z.r = o.vy > -0.5; else z.l = z.r = o.vy > 1.8; }
+        if (o.vx > want + 0.8) z.l = z.r = true; else if (o.vx < want - 0.8) z.r = o.vy > -0.5; else z.l = z.r = o.vy > 3; }
     } else { const d = cx - o.x; if (d < -14) z.l = true; else if (d > 14 && !S.inSpot) z.r = true; }
     S.step(simpleInput(S, z));
   }
