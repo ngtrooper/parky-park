@@ -13,14 +13,17 @@ export default {
       else if (e.name === 'SDK_REWARDED_WATCH_COMPLETE') rewardDone = true;
       else if (e.name === 'SDK_READY') ready = true;
       (window.__gdEvents ||= []).push(e.name); } };
-    try { await loadScript('https://html5.api.gamedistribution.com/main.min.js'); ready = true; } catch (e) { console.warn('GD SDK unavailable', e); } },
+    try { await loadScript('https://html5.api.gamedistribution.com/main.min.js'); ready = true; gd()?.preloadAd?.('rewarded').catch(() => {}); /* lets GD see rewarded integration early */ } catch (e) { console.warn('GD SDK unavailable', e); } },
   loadingDone() {}, gameplayStart() {}, gameplayStop() {}, happytime() {},
   adsOn: () => ready && !!gd(),
   // showAd can stay pending forever when no ad fills (e.g. off-site / localhost): if the ad hasn't started within
   // 6 s we carry on; once it has started we wait for SDK_GAME_START (or the promise), capped at 90 s.
   async interstitial() { await this._show(); },
   onRunStart() { return this.interstitial(); },
-  async rewarded() { rewardDone = false; await this._show('rewarded'); return rewardDone; },
+  // GD rewarded flow per docs: preloadAd('rewarded') -> showAd('rewarded'); reward only on SDK_REWARDED_WATCH_COMPLETE
+  async rewarded() { if (!gd()?.showAd) return false; rewardDone = false;
+    try { if (gd().preloadAd) await gd().preloadAd('rewarded'); } catch (e) { console.warn('GD: no rewarded ad available', e); return false; }
+    await this._show('rewarded'); return rewardDone; },
   _show(type) { if (!gd()?.showAd) return Promise.resolve(); adStarted = false;
     return new Promise(res => { let done = false; const fin = () => { if (done) return; done = true; onAdEnd = null; clearTimeout(t1); clearTimeout(t2); hooks.resume?.(); res(); };
       onAdEnd = fin; const t1 = setTimeout(() => { if (!adStarted) fin(); }, 6000), t2 = setTimeout(fin, 90000);

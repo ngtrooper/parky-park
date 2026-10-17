@@ -164,7 +164,7 @@ function buildTouch() {
 }
 
 function showMenu() {
-  platform.gameplayStop();
+  navSeq++; platform.gameplayStop();
   const sc = game.scene.getScene('play'); if (sc) sc.paused = true;
   menuEl?.remove(); overlay?.remove(); hud && (hud.style.display = 'none');
   const total = Object.values(save.stars).reduce((a, b) => a + b, 0);
@@ -191,13 +191,18 @@ function startLevel(id) {
   menuEl?.remove(); menuEl = null; closeShop();
   game.scene.getScene('play').scene.restart({ id });
 }
+let navSeq = 0, starting = false; // navigation token: an ad must never resume into a stale action
 async function startLaunch(daily = false, seed = null) {
-  menuEl?.remove(); menuEl = null; closeShop(); goFullscreen();
-  await onRunStart(); // interstitial pacing (between runs only)
+  if (starting) return; starting = true; const my = ++navSeq;
+  try {
+    menuEl?.remove(); menuEl = null; closeShop(); goFullscreen();
+    await onRunStart(); // interstitial between runs only (platform layer enforces a >= 60 s gap)
+  } finally { starting = false; }
+  if (my !== navSeq) return; // player went to the menu / shop meanwhile: stay there
   game.scene.getScene('play').scene.restart({ mode: 'launch', daily, seed: seed ?? (daily ? dailySeed() : Math.floor(Math.random() * 1e9)) });
 }
 function openShop(after) {
-  platform.gameplayStop();
+  navSeq++; platform.gameplayStop();
   closeShop(); overlay?.remove(); hud && (hud.style.display = 'none');
   const sc = game.scene.getScene('play'); if (sc) sc.paused = true;
   const draw = () => {
@@ -629,7 +634,8 @@ class Play extends Phaser.Scene {
       ad2.onclick = () => showRewarded(() => { save.coins += p.total; persist(); ad2.disabled = true; ad2.textContent = `✅ +${p.total} bonus coins`; this.toast('2x COINS!'); }); }
     if (sh) { sh.addEventListener('pointerdown', cancel); sh.onclick = () => { navigator.clipboard?.writeText(share).then(() => { sh.textContent = '✅ Copied!'; }).catch(() => { sh.textContent = share; }); }; }
     overlay.querySelector('[data-a=s]').addEventListener('pointerdown', cancel); overlay.querySelector('[data-a=m]').addEventListener('pointerdown', cancel);
-    overlay.querySelector('.panel').addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') startLaunch(L.daily); });
+    overlay.addEventListener('pointerdown', cancel, true); // any touch on the results screen stops the auto-next countdown
+    overlay.querySelector('.panel').addEventListener('click', e => { if (e.target.classList.contains('auto')) startLaunch(L.daily); });
     if (!S.parked) { overlay.querySelector('.btns:last-child').insertAdjacentHTML('beforebegin', '<div class="auto">next run in 1.5s… (tap to go now)</div>');
       this.autoT = setTimeout(() => { if (!shopEl && !menuEl && this.done && this.scene.isActive()) startLaunch(L.daily); }, 1500); }
     this.events.once('shutdown', () => clearTimeout(this.autoT));

@@ -15,6 +15,6 @@ if (window.__MOCK === 'poki') {
 }
 if (window.__MOCK === 'gamedistribution') {
   window.gdsdk = { showAd: async t => { log('showAd', t || 'interstitial'); window.GD_OPTIONS.onEvent({ name: 'SDK_GAME_PAUSE' }); await adRun(null);
-    if (t === 'rewarded') window.GD_OPTIONS.onEvent({ name: 'SDK_REWARDED_WATCH_COMPLETE' }); window.GD_OPTIONS.onEvent({ name: 'SDK_GAME_START' }); }, preloadAd: async () => {} };
+    if (t === 'rewarded') window.GD_OPTIONS.onEvent({ name: 'SDK_REWARDED_WATCH_COMPLETE' }); window.GD_OPTIONS.onEvent({ name: 'SDK_GAME_START' }); }, preloadAd: async t => { log('preloadAd', t); } };
   window.GD_OPTIONS?.onEvent({ name: 'SDK_READY' });
 }
