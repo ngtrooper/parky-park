@@ -118,3 +118,14 @@ button.danger{background:#ff8a8a;font-size:14px}
 .hud .speedo{font:900 22px monospace;text-shadow:2px 2px 0 #000;color:#bfefff}.hud .speedo.hot{color:#7fd3ff;animation:wpulse .4s infinite}
 .warn{bottom:auto;top:30%}
 @media (max-height:500px){.touch .arrow{width:76px;height:76px;font-size:32px}.touch .bb{width:86px;height:86px}.touch .sm{width:56px;height:56px}}
+/* v8: move arrows (left thumb) + flips/hop + 8-way RCS thrust pad (right thumb) */
+.touch .flips{display:flex;flex-direction:row;gap:10px;align-self:flex-end}
+.touch .pad{zoom:var(--z);position:relative;width:168px;height:168px;border-radius:50%;background:#ff7a1a40;border:3px solid #ffffffb0;touch-action:none;flex:none}
+.touch .pad i{position:absolute;font-style:normal;color:#fff;font-size:22px;text-shadow:2px 2px 0 #000;pointer-events:none}
+.touch .pad i:nth-child(1){top:6px;left:50%;transform:translateX(-50%)}.touch .pad i:nth-child(2){right:8px;top:50%;transform:translateY(-50%)}
+.touch .pad i:nth-child(3){bottom:6px;left:50%;transform:translateX(-50%)}.touch .pad i:nth-child(4){left:8px;top:50%;transform:translateY(-50%)}
+.touch .pad b{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px;border-radius:50%;background:#ffffffaa;pointer-events:none}
+.touch .pad.held b{background:#ffd23f}
+.touch .pad small{position:absolute;bottom:-18px;left:0;right:0;text-align:center;color:#fff;font-weight:900;font-size:11px;letter-spacing:1px;text-shadow:1px 1px 0 #000}
+.touch .tr{padding-right:env(safe-area-inset-right)}
+@media (max-height:500px){.touch .pad{width:140px;height:140px}.touch .pad b{width:52px;height:52px;margin:-26px}}

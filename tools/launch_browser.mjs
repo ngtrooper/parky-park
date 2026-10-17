@@ -2,7 +2,7 @@
 import { chromium } from 'playwright';
 import { genLot } from '../src/launch.js'; import { tryRun } from './launch_tune.mjs';
 const URL = process.argv[2] || 'http://localhost:4173/';
-const enc = i => (i.left ? 1 : 0) | (i.right ? 2 : 0) | (i.up ? 4 : 0) | (i.spinL ? 8 : 0) | (i.spinR ? 16 : 0) | (i.hop ? 32 : 0) | (i.boost ? 64 : 0);
+const enc = i => (i.left ? 1 : 0) | (i.right ? 2 : 0) | (i.up ? 4 : 0) | (i.spinL ? 8 : 0) | (i.spinR ? 16 : 0) | (i.hop ? 32 : 0) | (i.boost ? 64 : 0) | (i.tD ? 128 : 0) | (i.tL ? 256 : 0) | (i.tR ? 512 : 0) | (i.tU ? 4 : 0);
 const plan = [{ up: {}, seed: 11 }, { up: { boostCap: 3, boostPow: 3, air: 3, thrust: 3, grip: 2 }, seed: 22 }];
 const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 const ctx = await browser.newContext({ viewport: { width: 960, height: 540 }, recordVideo: process.env.VIDEO ? { dir: 'shots/lvideo', size: { width: 960, height: 540 } } : undefined });

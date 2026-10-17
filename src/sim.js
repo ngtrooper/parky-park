@@ -70,28 +70,40 @@ export function createSim(L) {
     S.events.length = 0;
     if (S.parked || S.failed) { Engine.update(engine, DT); S.frame++; return; }
     const t = S.frame;
-    if (!S.started && (inp.left || inp.right || inp.up || inp.hop || inp.boost || inp.spinL || inp.spinR)) { S.started = true; S.startF = t; S.events.push('go'); }
+    // thrust pad (tU/tD/tL/tR, world-relative); legacy 'up' = tU, legacy 'boost' = ramp boost the facing/held way
+    inp = { ...inp, tU: !!(inp.tU || inp.up) };
+    if (!S.started && (inp.left || inp.right || inp.tU || inp.tD || inp.tL || inp.tR || inp.hop || inp.boost || inp.spinL || inp.spinR)) { S.started = true; S.startF = t; S.events.push('go'); }
     S.rf = S.started ? t - S.startF : -1; // race clock: rivals and timers wait for your first input
     const a = car.angle, ux = Math.sin(a), uy = -Math.cos(a), fx = Math.cos(a), fy = Math.sin(a);
     const m = car.mass;
     const fuelRate = (L.fuelRate || 1) * (inp.assist ? 0.65 : 1); // phone scheme is coarser: cheaper thrust
-    S.thrusting = { up: false, l: false, r: false };
-    // lift (thrusters along car "up")
-    // thrusters: launch = straight up (true momentum otherwise); puzzles = along the car's up
-    if (inp.up && S.fuel > 0) { Body.applyForce(car, car.position, LA ? { x: 0, y: -LIFT_LA * T.lift * m } : { x: ux * LIFT * T.lift * m, y: uy * LIFT * T.lift * m });
-      S.fuel -= (LA ? 0.45 : 0.2) * fuelRate; S.thrusting.up = true; }
-    // fan suction: glued to the ramp surface
-    // boost gauge: extra top speed + push on the ground, forward shove in the air
-    S.boosting = !!(inp.boost && S.boost > 0);
-    if (LA) { // launch: the BOOST gauge is a ramp booster, used whenever you hold it on the ramp / ground
-      // fires only on the BOOST input, in the held direction (or the facing direction); wheels must be down
-      S.boosting = S.boosting && S.grounded && car.position.x < L.lipX + 20; // ramp booster only
-      if (S.boosting) { S.boost = Math.max(0, S.boost - 1); const bd = (inp.right ? 1 : 0) - (inp.left ? 1 : 0) || S.facing; S.facing = bd;
+    S.thrusting = { up: false, l: false, r: false }; S.thrust = null;
+    const tx = (inp.tR ? 1 : 0) - (inp.tL ? 1 : 0), ty = (inp.tD ? 1 : 0) - (inp.tU ? 1 : 0);
+    if (LA) {
+      // ramp: horizontal thrust = the BOOST gauge (wheels down, before the lip). Legacy inp.boost too.
+      const onRampG = S.grounded && car.position.x < L.lipX + 20;
+      const bd = tx || (inp.boost ? ((inp.right ? 1 : 0) - (inp.left ? 1 : 0) || S.facing) : 0);
+      S.boosting = !!(onRampG && bd && S.boost > 0);
+      if (S.boosting) { S.boost = Math.max(0, S.boost - 1); S.facing = bd;
         const sg = bd * (Math.cos(a) > 0 ? 1 : -1), vf = car.velocity.x * fx + car.velocity.y * fy;
-        if (vf * sg < 48) Body.setVelocity(car, { x: car.velocity.x + fx * sg * T.boostAcc, y: car.velocity.y + fy * sg * T.boostAcc }); }
-    } else if (S.boosting) { S.boost = Math.max(0, S.boost - 0.6);
-      if (!S.grounded) Body.applyForce(car, car.position, { x: fx * 0.0009 * (1 + T.boostPow / 4) * m * S.facing * (Math.cos(a) > 0 ? 1 : -1), y: fy * 0.0009 * m * S.facing });
-      else if (!inp.left && !inp.right) inp = { ...inp, [S.facing > 0 ? 'right' : 'left']: true };
+        if (vf * sg < 48) Body.setVelocity(car, { x: car.velocity.x + fx * sg * T.boostAcc, y: car.velocity.y + fy * sg * T.boostAcc });
+        S.thrust = { x: bd, y: 0 }; }
+      // everywhere else: thrusters push the car the held way (world-relative), from the AIR gauge
+      const ax = S.boosting ? 0 : tx;
+      if ((ax || ty) && S.fuel > 0) { const n = Math.hypot(ax, ty), k = LIFT_LA * T.lift * m;
+        // Roadster-style RCS, relative to the car: up = bottom jets (lift along car-up), down = top jets (slam),
+        // right/left = rear/front jets (push along the car's nose axis). Sideways a bit weaker, slam stronger.
+        const pf = ax / n * 0.5, pu = -ty / n * (ty > 0 ? 1.3 : 1);
+        Body.applyForce(car, car.position, { x: (fx * pf + ux * pu) * k, y: (fy * pf + uy * pu) * k });
+        S.fuel -= 0.45 * fuelRate * (n > 1 ? 1.2 : 1); S.thrust = { x: S.boosting ? bd : ax, y: ty, rel: 1 };
+        if (ty < 0) S.thrusting.up = true; }
+    } else {
+      if (inp.tU && S.fuel > 0) { Body.applyForce(car, car.position, { x: ux * LIFT * T.lift * m, y: uy * LIFT * T.lift * m }); S.fuel -= 0.2 * fuelRate; S.thrusting.up = true; }
+      if (tx && !S.grounded && !inp.left && !inp.right) inp = { ...inp, [tx > 0 ? 'right' : 'left']: true }; // puzzles: side thrust = air push
+      S.boosting = !!(inp.boost && S.boost > 0);
+      if (S.boosting) { S.boost = Math.max(0, S.boost - 0.6);
+        if (!S.grounded) Body.applyForce(car, car.position, { x: fx * 0.0009 * (1 + T.boostPow / 4) * m * S.facing * (Math.cos(a) > 0 ? 1 : -1), y: fy * 0.0009 * m * S.facing });
+        else if (!inp.left && !inp.right) inp = { ...inp, [S.facing > 0 ? 'right' : 'left']: true }; }
     }
     // horizontal
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
@@ -246,7 +258,7 @@ export function createSim(L) {
     S.maxX = Math.max(S.maxX, car.position.x);
     S.warn = null;
     if (LA && !S.parked && S.started) { // lenient auto-fail, always with a reason and a warning first
-      const any = inp.left || inp.right || inp.up || inp.hop || inp.spinL || inp.spinR || inp.boost;
+      const any = inp.left || inp.right || inp.tU || inp.tD || inp.tL || inp.tR || inp.hop || inp.spinL || inp.spinR || inp.boost;
       const sp = Math.hypot(car.velocity.x, car.velocity.y), past = car.position.x > L.lipX;
       S.idleF = any || !g || S.inSpot ? 0 : S.idleF + 1;
       S.slowF = sp < 0.4 && !S.inSpot && t > 90 && past ? S.slowF + 1 : 0;

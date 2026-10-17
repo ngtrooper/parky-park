@@ -43,9 +43,10 @@ const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 const ghostKey = id => 'parkypark_ghost_' + id;
 
 // ---------- input ----------
-const input = { left: false, right: false, up: false, spinL: false, spinR: false, hop: false, boost: false };
-const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', Space: 'up',
-  KeyQ: 'spinL', KeyZ: 'spinL', KeyE: 'spinR', KeyX: 'spinR', KeyS: 'hop', ArrowDown: 'hop', ShiftLeft: 'boost', ShiftRight: 'boost', KeyB: 'boost' };
+const input = { left: false, right: false, tU: false, tD: false, tL: false, tR: false, spinL: false, spinR: false, hop: false };
+// v8 controls: arrows MOVE, WASD THRUST (world directions; forward on the ramp = boost), Q/E flip, ↓ / SPACE hop, R retry
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'tU', KeyS: 'tD', KeyA: 'tL', KeyD: 'tR',
+  KeyQ: 'spinL', KeyE: 'spinR', ArrowDown: 'hop', Space: 'hop' };
 addEventListener('keydown', e => {
   if (KEYMAP[e.code]) { input[KEYMAP[e.code]] = true; e.preventDefault(); }
   if (e.repeat) return;
@@ -67,9 +68,9 @@ const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in windo
 // touch: on-screen buttons (shown on touch devices / ?touch); hidden while menus or results are up
 function setZones(on) { touchEl?.classList.toggle('on', on && TOUCH); if (!on) { Object.keys(input).forEach(k => input[k] = false); touchEl?.querySelectorAll('.held').forEach(b => b.classList.remove('held')); } }
 function showTutorial(done) {
-  const B = TOUCH ? '⚡ BOOST' : 'SHIFT', T = TOUCH ? '▲ THRUST' : '▲ / SPACE', F = TOUCH ? '⟲ FLIP' : 'Q / E';
-  const steps = [[`Boost on the ramp`, `Roll with ▶. Hold ${B} on the ramp to build speed. How long you boost decides how far you fly. ▶ alone never boosts.`, '⚡'],
-    ['Real momentum', `Off the ramp you fly a true arc and start falling. ${T} pushes you up (uses AIR). ◀ ▶ steer a little. ${F} flips: each clean flip adds +25% pay, but only if you park!`, '🚀'],
+  const M = TOUCH ? '◀ ▶ (left thumb)' : '← →', P = TOUCH ? 'the THRUST pad (right thumb)' : 'W A S D', PF = TOUCH ? 'thrust pad ▶' : 'D', F = TOUCH ? '⟲ ⟳' : 'Q / E';
+  const steps = [[`Drive & boost`, `${M} drives (free). On the ramp, hold ${PF} to fire the booster (uses BOOST): the longer you boost, the farther you fly.`, '⚡'],
+    ['Aim your thrusters', `Off the ramp you fly a real arc. ${P} pushes the car that way: like the Roadster's cold-gas jets: up fires the belly jets (lift), down the roof jets (slam onto a spot), ◀ ▶ the front/rear jets along the car. Uses AIR. ${F} flips: each clean flip adds +25% pay, if you park!`, '🚀'],
     ['Steal the spot', 'Watch the landing marker: GREEN means a free spot. Land, stop, and it is yours. Farther spots pay more. Beat the rivals!', '🅿️']];
   let k = 0;
   const draw = () => { tutEl.innerHTML = `<div class="card"><div style="font-size:48px">${steps[k][2]}</div><h3>${steps[k][0]}</h3><div>${steps[k][1]}</div>
@@ -86,14 +87,24 @@ function goFullscreen() {
 
 function buildTouch() {
   touchEl = h(`<div class="touch p"><div class="tl"><button class="arrow" data-k="left">◀</button><button class="arrow" data-k="right">▶</button></div>
-    <div class="tr"><button class="sm" data-k="spinL">⟲<small>FLIP</small></button><button class="sm" data-k="hop">⤒<small>HOP</small></button>
-      <button class="bb boost" data-k="boost">⚡<small>BOOST</small></button><button class="bb thrust" data-k="up">▲<small>THRUST</small></button></div></div>`);
+    <div class="tr"><div class="flips"><button class="sm" data-k="spinL">⟲</button><button class="sm" data-k="spinR">⟳</button><button class="sm hop" data-k="hop">⤒<small>HOP</small></button></div>
+      <div class="pad" data-pad><i>▲</i><i>▶</i><i>▼</i><i>◀</i><b></b><small>THRUST</small></div></div></div>`);
   touchEl.querySelectorAll('button').forEach(b => {
     const k = b.dataset.k;
     const on = e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} input[k] = true; b.classList.add('held'); };
     const off = e => { e.preventDefault(); input[k] = false; b.classList.remove('held'); };
     b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
   });
+  // 8-way thrust pad: direction from the pad centre to the thumb
+  const pad = touchEl.querySelector('.pad'), knob = pad.querySelector('b'); let pid = null;
+  const set = e => { const r = pad.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), d = Math.hypot(dx, dy), R = r.width / 2;
+    const nx = d ? dx / d : 0, ny = d ? dy / d : 0, live = d > R * 0.18;
+    input.tR = live && nx > 0.38; input.tL = live && nx < -0.38; input.tD = live && ny > 0.38; input.tU = live && ny < -0.38;
+    const kd = Math.min(d, R * 0.55); knob.style.transform = `translate(${nx * kd}px,${ny * kd}px)`; pad.classList.toggle('held', live); };
+  const end = e => { if (e.pointerId !== pid) return; pid = null; input.tU = input.tD = input.tL = input.tR = false; knob.style.transform = ''; pad.classList.remove('held'); };
+  pad.addEventListener('pointerdown', e => { e.preventDefault(); pid = e.pointerId; try { pad.setPointerCapture(pid); } catch {} set(e); });
+  pad.addEventListener('pointermove', e => { if (e.pointerId === pid) set(e); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => pad.addEventListener(n, end));
   ui.appendChild(touchEl);
 }
 
@@ -113,7 +124,7 @@ function showMenu() {
       return `<div class="lv ${locked ? 'locked' : ''}" data-id="${L.id}"><div class="n">${L.id}</div><div class="nm">${L.name}</div>
         <div class="s">${starStr(save.stars[L.id] || 0)}</div><div class="bt">${save.best[L.id] ? 'best ' + fmt(save.best[L.id]) : 'par ' + L.par[1] + 's'}</div></div>`;
     }).join('')}</div>
-    <div class="keys">◀ ▶ drive &nbsp; SHIFT boost (on the ramp, with ◀/▶ for direction) &nbsp; ▲ / SPACE thrust &nbsp; ↓ hop &nbsp; Q / E flip<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
+    <div class="keys">← → move &nbsp; W A S D thrust (D on the ramp = boost) &nbsp; Q / E flip &nbsp; ↓ / SPACE hop<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
   menuEl.querySelectorAll('.lv').forEach(el => el.addEventListener('click', () => { sfx.click(); startLevel(+el.dataset.id); }));
   menuEl.querySelector('[data-a=launch]').onclick = () => { sfx.click(); startLaunch(); };
   menuEl.querySelector('[data-a=daily]').onclick = () => { sfx.click(); startLaunch(true); };
@@ -326,7 +337,7 @@ class Play extends Phaser.Scene {
     while (this.acc >= DT && steps < 6) {
       this.acc -= DT; steps++;
       let inp = input;
-      if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32), boost: !!(v & 64) }; }
+      if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32), boost: !!(v & 64), tD: !!(v & 128), tL: !!(v & 256), tR: !!(v & 512) }; }
       const vyBefore = S.car.velocity.y, wasG = S.grounded;
       S.step(inp);
       if (!S.parked && !S.failed && S.started) this.ghostRec.push(Math.round(S.car.position.x), Math.round(S.car.position.y), Math.round(S.car.angle * 100));
@@ -337,17 +348,24 @@ class Play extends Phaser.Scene {
   }
   handleEvents(S, vyBefore, wasG, inp) {
     const c = S.car, cam = this.cameras.main;
-    if (S.thrusting.up || S.thrusting.l || S.thrusting.r) {
+    if (S.thrust || S.thrusting.up || S.thrusting.l || S.thrusting.r) {
       const a = c.angle, cos = Math.cos(a), sin = Math.sin(a);
-      if (S.thrusting.up) for (const lx of [-20, 18]) {
-        const wx = c.position.x + lx * cos - 10 * sin, wy = c.position.y + lx * sin + 10 * cos;
-        this.flameAngle = Phaser.Math.RadToDeg(a) + 90;
-        this.flame.emitParticleAt(wx, wy, 1);
+      const th = S.thrust || { x: S.thrusting.r ? 1 : S.thrusting.l ? -1 : 0, y: S.thrusting.up ? -1 : 0 };
+      if (!S.thrust && S.thrusting.up) { // puzzles: thrusters along the car's up
+        for (const lx of [-20, 18]) { this.flameAngle = Phaser.Math.RadToDeg(a) + 90; this.flame.emitParticleAt(c.position.x + lx * cos - 10 * sin, c.position.y + lx * sin + 10 * cos, 1); }
+      } else { // car-relative jets: puff out of the real nozzle opposite the push (bottom/top/rear/front)
+        const n = Math.hypot(th.x, th.y) || 1, pf = th.x / n, pu = -th.y / n;
+        const dx = cos * pf + sin * pu, dy = sin * pf - cos * pu; // push direction in world (fwd=(cos,sin), up=(sin,-cos))
+        this.flameAngle = Phaser.Math.RadToDeg(Math.atan2(-dy, -dx));
+        if (th.x) { const sx = Math.sign(th.x); for (const ly of [-6, 8]) this.flame.emitParticleAt(c.position.x - cos * 40 * sx - sin * ly, c.position.y - sin * 40 * sx + cos * ly, 1); }
+        if (th.y) { const sy = Math.sign(-th.y); for (const lx of [-22, 20]) this.flame.emitParticleAt(c.position.x + lx * cos - sin * 14 * sy, c.position.y + lx * sin + cos * 14 * sy, 1); }
       }
-      const side = S.thrusting.r ? -1 : 1;
-      if (S.thrusting.l || S.thrusting.r) { this.flameAngle = Phaser.Math.RadToDeg(a) + (side < 0 ? 180 : 0); }
-      if (S.thrusting.l || S.thrusting.r) this.flame.emitParticleAt(c.position.x + side * 32 * cos, c.position.y + side * 32 * sin, 1);
       sfx.thrust();
+    }
+    if (!S.grounded && (inp.spinL || inp.spinR) && S.frame % 2 === 0) { // flip: corner RCS puffs (front-top + rear-bottom pair)
+      const a = c.angle, cos = Math.cos(a), sin = Math.sin(a), d = inp.spinR ? 1 : -1, save = this.flameAngle;
+      for (const [lx, ly] of [[38, -14 * d], [-38, 14 * d]]) { this.flameAngle = Phaser.Math.RadToDeg(a) + (ly < 0 ? -90 : 90); this.flame.emitParticleAt(c.position.x + lx * cos - ly * sin, c.position.y + lx * sin + ly * cos, 1); }
+      this.flameAngle = save;
     }
     if (S.grounded && !wasG && vyBefore > 3) {
       cam.shake(120, Math.min(0.012, vyBefore * 0.0012));
@@ -458,7 +476,7 @@ class Play extends Phaser.Scene {
       if (!this.isLaunch) { this.hP3.classList.toggle('miss', t > this.L.par[1]); this.hP2.classList.toggle('miss', t > this.L.par[0]); }
       else { const d = Math.max(0, Math.floor((S.maxX - this.L.lipX) / 60)); this.hTimer.textContent = d + 'm'; if (this.hSpeed) { const kmh = Math.round(Math.hypot(S.car.velocity.x, S.car.velocity.y) * 3.6); this.hSpeed.textContent = (S.boosting ? '⚡ ' : '') + kmh + ' km/h'; this.hSpeed.classList.toggle('hot', S.boosting); } this.hP2.textContent = '⏱ ' + t.toFixed(1) + 's'; this.hP3.textContent = '🪙 ' + save.coins;
         if (this.bestFlagX && !this.gotBestDist && S.maxX > this.bestFlagX) { this.gotBestDist = true; this.toast('NEW BEST DISTANCE!'); sfx.best(); this.cameras.main.flash(120, 255, 200, 120); } }
-      const w = !S.started && this.isLaunch ? (TOUCH ? 'Hold ▶ and ⚡ BOOST to go!' : 'Hold ▶ + SHIFT to boost down the ramp!') : S.warn ? (TOUCH ? WARN[S.warn].replace(' (↓)', '') : WARN[S.warn]) : '';
+      const w = !S.started && this.isLaunch ? (TOUCH ? 'Hold ▶ and push the THRUST pad ▶ to boost!' : 'Hold → and D to boost down the ramp!') : S.warn ? (TOUCH ? WARN[S.warn].replace(' (↓)', '') : WARN[S.warn]) : '';
       if (this.hWarn.textContent !== w) { this.hWarn.textContent = w; this.hWarn.classList.toggle('on', !!w); }
     }
     this.hFuel.style.width = Math.max(0, S.fuel / (this.L.fuel || 100) * 100) + '%';

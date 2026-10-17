@@ -1,5 +1,5 @@
 import { chromium } from 'playwright'; import { genLot } from '../src/launch.js'; import { tryRun } from './launch_tune.mjs';
-const enc = i => (i.left ? 1 : 0) | (i.right ? 2 : 0) | (i.up ? 4 : 0) | (i.spinL ? 8 : 0) | (i.spinR ? 16 : 0) | (i.hop ? 32 : 0) | (i.boost ? 64 : 0);
+const enc = i => (i.left ? 1 : 0) | (i.right ? 2 : 0) | (i.up ? 4 : 0) | (i.spinL ? 8 : 0) | (i.spinR ? 16 : 0) | (i.hop ? 32 : 0) | (i.boost ? 64 : 0) | (i.tD ? 128 : 0) | (i.tL ? 256 : 0) | (i.tR ? 512 : 0) | (i.tU ? 4 : 0);
 const up = { boostCap: 2, boostPow: 2, air: 2, thrust: 1 }, seed = 31;
 const L = genLot(seed, up, false, 2); const { rec } = tryRun(L, 4);
 const inputs = [...Array(75).fill(0), ...rec.map(enc)];

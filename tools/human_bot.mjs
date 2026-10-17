@@ -9,11 +9,14 @@ export function humanRun(L, i, boostF = 999, seed = 1, lag = 9) {
   while (!S.parked && !S.failed && S.frame < 2700) {
     const c = S.car; hist.push({ x: c.position.x, y: c.position.y, vx: c.velocity.x, vy: c.velocity.y, g: S.grounded });
     const o = hist[Math.max(0, hist.length - 1 - lag)], inp = {};
-    if (o.x < L.lipX && o.g) { inp.right = true; inp.boost = S.frame < boostF; }
-    else if (!o.g) { const lx = landX(L, o.x, o.y, o.vx, o.vy);
-      if (lx < tx - 50) { inp.right = true; if (S.fuel > 0 && o.vy > -1.5) inp.up = true; }
-      else if (lx > tx + 50) inp.left = true;
-      if (Math.abs(tx - o.x) < 250 && o.vy > 4) inp.up = true; }
+    if (o.x < L.lipX && o.g) { inp.right = true; inp.tR = S.frame < boostF; }
+    else if (!o.g) { const lx = landX(L, o.x, o.y, o.vx, o.vy), an = Math.atan2(Math.sin(c.angle), Math.cos(c.angle));
+      // pilot like the Roadster: keep it level with the corner jets, then use belly / rear / front / roof jets
+      if (an > 0.18 && c.angularVelocity > -0.05) inp.spinL = true; else if (an < -0.18 && c.angularVelocity < 0.05) inp.spinR = true;
+      const lvl = Math.abs(an) < 0.5;
+      if (lx < tx - 50) { inp.right = true; if (S.fuel > 0 && lvl) { inp.tR = true; if (o.vy > -1.5) inp.tU = true; } }
+      else if (lx > tx + 120 && lvl) { inp.left = true; inp.tL = true; } else if (lx > tx + 50) inp.left = true;
+      if (Math.abs(tx - o.x) < 250 && o.vy > 4 && lvl) inp.tU = true; }
     else { const d = cx - o.x; if (d < -14) inp.left = true; else if (d > 14 && !S.inSpot) inp.right = true; }
     S.step(inp);
   }

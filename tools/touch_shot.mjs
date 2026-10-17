@@ -1,0 +1,10 @@
+import { chromium, devices } from 'playwright';
+const b = await chromium.launch({ args: ['--use-gl=swiftshader'] }); const c = await b.newContext({ ...devices['Pixel 7 landscape'] }); const p = await c.newPage();
+await p.goto('http://localhost:4173/?touch'); await p.evaluate(() => { localStorage.setItem('parkypark_tutdone', '1'); });
+await p.waitForFunction(() => window.__pp); await p.evaluate(() => { window.__pp.save.tut = 1; window.__pp.startLaunch(); }); await p.waitForTimeout(1500);
+const pad = await p.$('.touch .pad'); const r = await pad.boundingBox();
+await p.touchscreen.tap(10, 10);
+await p.evaluate(([x, y]) => { const el = document.querySelector('.touch .pad'); el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, bubbles: true, pointerType: 'touch', clientX: x, clientY: y })); document.querySelector('[data-k=right]').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, bubbles: true })); }, [r.x + r.width * 0.9, r.y + r.height * 0.5]);
+await p.waitForTimeout(2600);
+await p.evaluate(([x, y]) => { const el = document.querySelector('.touch .pad'); el.dispatchEvent(new PointerEvent('pointermove', { pointerId: 9, bubbles: true, clientX: x, clientY: y })); }, [r.x + r.width * 0.5, r.y + r.height * 0.05]);
+await p.waitForTimeout(500); await p.screenshot({ path: 'shots/touch_v8.png' }); await b.close();

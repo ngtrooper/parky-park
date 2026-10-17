@@ -16,15 +16,16 @@ for (let k = 0; k < 3; k++) { await p.tap('.tut'); await p.waitForTimeout(150); 
 const tutGone = await p.evaluate(() => !document.querySelector('.tut') && window.__pp.save.tut === 1);
 const btn = k => p.evaluate(([k, d]) => document.querySelector(`.touch [data-k=${k}]`).dispatchEvent(new PointerEvent(d ? 'pointerdown' : 'pointerup', { pointerId: k.length, bubbles: true, pointerType: 'touch' })), [k, true]);
 const rel = k => p.evaluate(k => document.querySelector(`.touch [data-k=${k}]`).dispatchEvent(new PointerEvent('pointerup', { pointerId: k.length, bubbles: true, pointerType: 'touch' })), k);
-const btnsShown = await p.evaluate(() => getComputedStyle(document.querySelector('.touch')).display !== 'none' && ['left', 'right', 'boost', 'up'].every(k => document.querySelector(`.touch [data-k=${k}]`)));
+const btnsShown = await p.evaluate(() => getComputedStyle(document.querySelector('.touch')).display !== 'none' && ['left', 'right', 'spinL', 'spinR', 'hop'].every(k => document.querySelector(`.touch [data-k=${k}]`)) && !!document.querySelector('.touch .pad'));
 // ▶ alone must not use boost
 await btn('right'); await p.waitForTimeout(700); const b1 = await p.evaluate(() => window.__pp.scene.sim.boost);
 const full = await p.evaluate(() => window.__pp.scene.L.tune.boostCap);
 // ▶ + ⚡ BOOST on the ramp drains the gauge and builds speed
-await btn('boost'); await p.waitForTimeout(1500); await p.screenshot({ path: 'shots/phone_flight.png' });
+const padAt = (fx, fy, t) => p.evaluate(([fx, fy, t]) => { const el = document.querySelector('.touch .pad'), r = el.getBoundingClientRect(); el.dispatchEvent(new PointerEvent(t, { pointerId: 9, bubbles: true, pointerType: 'touch', clientX: r.left + r.width * fx, clientY: r.top + r.height * fy })); }, [fx, fy, t]);
+await padAt(0.95, 0.5, 'pointerdown'); const padR = await p.evaluate(() => window.__pp.input ? null : null); await p.waitForTimeout(1500); await p.screenshot({ path: 'shots/phone_flight.png' });
 const st = await p.evaluate(() => { const S = window.__pp.scene.sim; return { x: S.car.position.x | 0, lip: window.__pp.scene.L.lipX, boost: S.boost | 0, v: Math.hypot(S.car.velocity.x, S.car.velocity.y).toFixed(1) }; });
-await rel('boost'); await rel('right');
-console.log('tutorial dismissed:', tutGone, '| touch buttons shown:', btnsShown, '| ▶ alone kept boost full:', b1 === full, '| ▶+BOOST: boost', full, '->', st.boost, 'speed', st.v, 'car x', st.x, '(lip', st.lip + ')');
+await padAt(0.95, 0.5, 'pointerup'); await rel('right');
+console.log('tutorial dismissed:', tutGone, '| touch buttons shown:', btnsShown, '| ▶ alone kept boost full:', b1 === full, '| ▶+pad▶ (ramp boost): boost', full, '->', st.boost, 'speed', st.v, 'car x', st.x, '(lip', st.lip + ')');
 // zero-coin fail -> no ad button; coin-earning fail -> only '2x coins' (no continue)
 await p.evaluate(() => window.__pp.scene.sim.fail('STUCK')); await p.waitForSelector('.panel.res');
 const noCoinAd = !!(await p.$('[data-a=ad2]')), anyCont = !!(await p.$('[data-a=adc]'));
