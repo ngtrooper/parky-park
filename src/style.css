@@ -105,3 +105,16 @@ button.big{font-size:22px;padding:10px 20px;min-width:200px}button.big small{dis
 .spotarrow{position:absolute;top:46%;zoom:var(--z);font:900 18px "Trebuchet MS",sans-serif;background:#0a3d22e0;border:3px solid #3ddc84;color:#fff;padding:6px 12px;border-radius:10px;opacity:0;transition:opacity .2s;text-shadow:2px 2px 0 #000}
 .spotarrow.on{opacity:1}.spotarrow.right{right:calc(10px + env(safe-area-inset-right))}.spotarrow.left{left:calc(10px + env(safe-area-inset-left))}
 button.danger{background:#ff8a8a;font-size:14px}
+/* v7 touch: arrows left, BOOST + THRUST right (big, thumb-friendly) */
+.zones{display:none!important}
+.touch{bottom:calc(12px + env(safe-area-inset-bottom));padding:0 calc(14px + env(safe-area-inset-left)) 0 calc(14px + env(safe-area-inset-left));align-items:flex-end}
+.touch .tl,.touch .tr{display:flex;gap:14px;align-items:flex-end}
+.touch button{zoom:var(--z);border-radius:22px;background:#ffffff38;border:3px solid #ffffffb0;color:#fff;text-shadow:2px 2px 0 #000;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900}
+.touch button small{font-size:12px;letter-spacing:1px}
+.touch .arrow{width:92px;height:92px;font-size:40px}
+.touch .bb{width:104px;height:104px;font-size:34px;min-width:0;padding:0}.touch .sm{width:66px;height:66px;font-size:22px}
+.touch .boost{background:#2f6fe080}.touch .thrust{background:#ff7a1a80}
+.touch button.held{background:#ffd23fcc;color:#111}
+.hud .speedo{font:900 22px monospace;text-shadow:2px 2px 0 #000;color:#bfefff}.hud .speedo.hot{color:#7fd3ff;animation:wpulse .4s infinite}
+.warn{bottom:auto;top:30%}
+@media (max-height:500px){.touch .arrow{width:76px;height:76px;font-size:32px}.touch .bb{width:86px;height:86px}.touch .sm{width:56px;height:56px}}

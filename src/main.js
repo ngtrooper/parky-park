@@ -1,12 +1,10 @@
 import Phaser from 'phaser';
 import { LEVELS } from './levels.js';
-import { createSim, starsFor, DT, CAR_W, CAR_H, FAIL_WHY, WARN } from './sim.js';
+import { createSim, starsFor, DT, CAR_W, CAR_H, FAIL_WHY, WARN, GRAV_LA } from './sim.js';
 import { makeArt, SKIES } from './art.js';
 import { sfx } from './sfx.js';
 import { genLot, dailySeed, UPGRADES, costOf, payout, flipMult } from './launch.js';
 import { showRewarded, onRunStart, isNative, adsOn } from './ads.js';
-import { simpleInput as simpleMap } from './controls.js';
-const simpleInput = S => simpleMap(S, zone);
 
 // ---------- save ----------
 const SAVE_KEY = "parkypark_v1";
@@ -66,26 +64,13 @@ const fmt = t => t.toFixed(2) + 's';
 const starStr = n => '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i>';
 let hud, overlay, menuEl, touchEl, shopEl, zonesEl, tutEl;
 const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || location.search.includes('touch');
-const zone = { l: false, r: false };
-function buildZones() {
-  zonesEl = h(`<div class="zones"><div class="zl"><span><b>HOLD</b>◀ brake · flip</span></div><div class="zr"><span><b>HOLD</b>go · boost · fly ▶</span></div></div>`);
-  const [zl, zr] = zonesEl.children, ptr = new Map();
-  const upd = () => { zone.l = [...ptr.values()].includes('l'); zone.r = [...ptr.values()].includes('r'); zl.classList.toggle('held', zone.l); zr.classList.toggle('held', zone.r); };
-  const side = e => (e.clientX < innerWidth / 2 ? 'l' : 'r');
-  zonesEl.addEventListener('pointerdown', e => { e.preventDefault(); ptr.set(e.pointerId, side(e)); upd(); });
-  zonesEl.addEventListener('pointermove', e => { if (ptr.has(e.pointerId)) { ptr.set(e.pointerId, side(e)); upd(); } });
-  const end = e => { ptr.delete(e.pointerId); upd(); };
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => zonesEl.addEventListener(t, end));
-  ui.insertBefore(zonesEl, ui.firstChild);
-}
-function setZones(on, btns = !on) { zonesEl?.classList.toggle('on', on && TOUCH); touchEl?.classList.toggle('on', btns && TOUCH); if (!on) { zone.l = zone.r = false; } }
+// touch: on-screen buttons (shown on touch devices / ?touch); hidden while menus or results are up
+function setZones(on) { touchEl?.classList.toggle('on', on && TOUCH); if (!on) { Object.keys(input).forEach(k => input[k] = false); touchEl?.querySelectorAll('.held').forEach(b => b.classList.remove('held')); } }
 function showTutorial(done) {
-  const steps = TOUCH ? [['Hold RIGHT', 'Hold the right side to race down the ramp. Keep holding in the air to fly (thrusters).', '▶'],
-    ['Hold LEFT', 'In the air, hold the left side to FLIP. Flips multiply your pay, but only if you park! On the ground it brakes. Both sides = hop.', '⟲'],
-    ['Steal the spot', 'Let go to drop into a spot, then stop. Farther spots pay more. Beat the rivals!', '🅿️']]
-    : [['Hold ▶ (or D)', 'Hold ▶ to race down the ramp. SHIFT boosts. Keep holding ▶ in the air to fly: it fires the thrusters.', '▶'],
-    ['Q / E to flip', 'Flip in the air with Q / E. Each clean flip adds +25% to your pay, but only if you park! ◀ brakes, ↓ hops.', '⟲'],
-    ['Steal the spot', 'Let go to drop into a spot, then stop. Farther spots pay more. Beat the rivals! R = retry.', '🅿️']];
+  const B = TOUCH ? '⚡ BOOST' : 'SHIFT', T = TOUCH ? '▲ THRUST' : '▲ / SPACE', F = TOUCH ? '⟲ FLIP' : 'Q / E';
+  const steps = [[`Boost on the ramp`, `Roll with ▶. Hold ${B} on the ramp to build speed. How long you boost decides how far you fly. ▶ alone never boosts.`, '⚡'],
+    ['Real momentum', `Off the ramp you fly a true arc and start falling. ${T} pushes you up (uses AIR). ◀ ▶ steer a little. ${F} flips: each clean flip adds +25% pay, but only if you park!`, '🚀'],
+    ['Steal the spot', 'Watch the landing marker: GREEN means a free spot. Land, stop, and it is yours. Farther spots pay more. Beat the rivals!', '🅿️']];
   let k = 0;
   const draw = () => { tutEl.innerHTML = `<div class="card"><div style="font-size:48px">${steps[k][2]}</div><h3>${steps[k][0]}</h3><div>${steps[k][1]}</div>
     <div class="dots">${steps.map((_, j) => j === k ? '<b>●</b>' : '●').join('')}</div><div style="margin-top:8px;font-size:13px;opacity:.7">${TOUCH ? 'tap' : 'click or press any key'} to continue</div></div>`; };
@@ -100,15 +85,15 @@ function goFullscreen() {
 }
 
 function buildTouch() {
-  touchEl = h(`<div class="touch p"><div><button data-k="left">◀</button><button data-k="right">▶</button></div>
-    <div><button data-k="spinL">⟲</button><button data-k="spinR">⟳</button><button data-k="hop">⤒</button><button data-k="boost">⚡</button><button data-k="up">▲</button></div></div>`);
+  touchEl = h(`<div class="touch p"><div class="tl"><button class="arrow" data-k="left">◀</button><button class="arrow" data-k="right">▶</button></div>
+    <div class="tr"><button class="sm" data-k="spinL">⟲<small>FLIP</small></button><button class="sm" data-k="hop">⤒<small>HOP</small></button>
+      <button class="bb boost" data-k="boost">⚡<small>BOOST</small></button><button class="bb thrust" data-k="up">▲<small>THRUST</small></button></div></div>`);
   touchEl.querySelectorAll('button').forEach(b => {
     const k = b.dataset.k;
-    const on = e => { e.preventDefault(); input[k] = true; b.classList.add('held'); };
+    const on = e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} input[k] = true; b.classList.add('held'); };
     const off = e => { e.preventDefault(); input[k] = false; b.classList.remove('held'); };
-    b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
+    b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
   });
-  
   ui.appendChild(touchEl);
 }
 
@@ -128,7 +113,7 @@ function showMenu() {
       return `<div class="lv ${locked ? 'locked' : ''}" data-id="${L.id}"><div class="n">${L.id}</div><div class="nm">${L.name}</div>
         <div class="s">${starStr(save.stars[L.id] || 0)}</div><div class="bt">${save.best[L.id] ? 'best ' + fmt(save.best[L.id]) : 'par ' + L.par[1] + 's'}</div></div>`;
     }).join('')}</div>
-    <div class="keys">${TOUCH ? 'Hold RIGHT to go &amp; fly · hold LEFT to brake / flip · both = hop<br>' : ''}▶ drive (hold in the air to fly) &nbsp; ◀ brake &nbsp; SHIFT boost &nbsp; ▲ / SPACE thrust &nbsp; ↓ hop &nbsp; Q / E flip<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
+    <div class="keys">◀ ▶ drive &nbsp; SHIFT boost (on the ramp, with ◀/▶ for direction) &nbsp; ▲ / SPACE thrust &nbsp; ↓ hop &nbsp; Q / E flip<br>R instant retry &nbsp; ENTER run again / next &nbsp; ESC menu</div></div>`);
   menuEl.querySelectorAll('.lv').forEach(el => el.addEventListener('click', () => { sfx.click(); startLevel(+el.dataset.id); }));
   menuEl.querySelector('[data-a=launch]').onclick = () => { sfx.click(); startLaunch(); };
   menuEl.querySelector('[data-a=daily]').onclick = () => { sfx.click(); startLaunch(true); };
@@ -252,7 +237,7 @@ class Play extends Phaser.Scene {
     this.events.once('shutdown', () => { hud?.remove(); overlay?.remove(); });
     this.lastVy = 0;
     window.__pp.scene = this;
-    setZones(this.isLaunch);
+    setZones(true);
     this.uiScale();
     if (this.isLaunch && !save.tut && !this.replay) { this.paused = true; showTutorial(() => { this.paused = false; }); }
     this.applyZoom = () => { const W = this.scale.width, H = this.scale.height; this.cameras.main.setSize(W, H); const f = W < H ? Math.max((W / 960) * 1.35, H / (L.h + 380) / (this.isLaunch ? 0.62 : 0.8)) : Math.min(W / 960, H / 540);
@@ -267,7 +252,7 @@ class Play extends Phaser.Scene {
     const g = this.predG, c = S.car; g.clear();
     const show = !S.grounded && c.position.x > this.L.lipX - 40 && !this.done;
     if (show) {
-      let x = c.position.x, y = c.position.y, vx = c.velocity.x, vy = c.velocity.y; const drag = 1 - (this.L.tune.drag || 0.02), gr = 0.00082 * DT * DT;
+      let x = c.position.x, y = c.position.y, vx = c.velocity.x, vy = c.velocity.y; const drag = 1 - (this.L.tune.drag || 0.02), gr = GRAV_LA * DT * DT;
       for (let i = 0; i < 600; i++) { vy += gr; vx *= drag; vy *= drag; x += vx; y += vy; if (vy > 0 && y + 11 >= this.surfaceAt(x).y) break; }
       const surf = this.surfaceAt(x); let spot = -1;
       S.spots.forEach((sp, i) => { const r = S.spotRect(i); if (!S.taken.has(i) && x > r.x - 10 && x < r.x + r.w + 10) spot = i; });
@@ -313,7 +298,7 @@ class Play extends Phaser.Scene {
     hud = h(`<div><div class="hud"><div class="l"><div class="ttl">${LA ? '🚀 ' + L.name : L.id + '. ' + L.name}</div>${LA ? '' : `<small>${L.hint}</small>`}
       ${LA && this.quest ? `<div class="quest">🎯 ${this.quest.txt} <b>🪙+${this.quest.pay}</b></div>` : ''}
       <div class="bar"><span>AIR</span><div class="fuel"><i></i></div></div>${LA ? '<div class="bar"><span>BOOST</span><div class="fuel boost"><i></i></div></div>' : ''}<div class="style"></div></div>
-      <div class="r"><div class="timer">${LA ? '0m' : '0.00'}</div><div class="pars"><span class="p2">★★ ${L.par[0]}s</span><span class="p3">★★★ ${L.par[1]}s</span></div>
+      <div class="r"><div class="timer">${LA ? '0m' : '0.00'}</div>${LA ? '<div class="speedo">0 km/h</div>' : ''}<div class="pars"><span class="p2">★★ ${L.par[0]}s</span><span class="p3">★★★ ${L.par[1]}s</span></div>
       <div class="pars"><span class="bestline">${LA ? `best spot #${save.bestSpot} · farthest ${save.bestDist}m` : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div>
       ${LA && save.streak ? `<div class="streak">🔥 ${save.streak} park streak · +${Math.min(5, save.streak) * 10}%</div>` : ''}</div></div>
       <div class="warn"></div>${LA ? '<div class="spotarrow"></div>' : ''}
@@ -322,7 +307,7 @@ class Play extends Phaser.Scene {
     hud.querySelector('[data-a=m]').onclick = () => showMenu();
     ui.insertBefore(hud, ui.firstChild);
     this.hTimer = hud.querySelector('.timer'); this.hFuel = hud.querySelector('.fuel i'); this.hBoost = hud.querySelector('.boost i'); this.hStyle = hud.querySelector('.style');
-    this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3'); this.hWarn = hud.querySelector('.warn'); this.hArrow = hud.querySelector('.spotarrow');
+    this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3'); this.hWarn = hud.querySelector('.warn'); this.hArrow = hud.querySelector('.spotarrow'); this.hSpeed = hud.querySelector('.speedo');
   }
   restartLevel() { if (menuEl || shopEl) return; if (this.isLaunch) return startLaunch(this.daily); this.scene.restart({ id: this.levelId }); }
   next() {
@@ -341,8 +326,6 @@ class Play extends Phaser.Scene {
     while (this.acc >= DT && steps < 6) {
       this.acc -= DT; steps++;
       let inp = input;
-      if (this.isLaunch && TOUCH && (zone.l || zone.r)) inp = { ...input, ...simpleInput(S) };
-      else if (this.isLaunch && !S.grounded && input.right) inp = { ...input, up: true, boost: true }; // hold ▶ in the air = fly
       if (this.replay) { const v = this.replay[S.frame] || 0; inp = { left: !!(v & 1), right: !!(v & 2), up: !!(v & 4), spinL: !!(v & 8), spinR: !!(v & 16), hop: !!(v & 32), boost: !!(v & 64) }; }
       const vyBefore = S.car.velocity.y, wasG = S.grounded;
       S.step(inp);
@@ -473,9 +456,9 @@ class Play extends Phaser.Scene {
       const t = S.time();
       this.hTimer.textContent = t.toFixed(2);
       if (!this.isLaunch) { this.hP3.classList.toggle('miss', t > this.L.par[1]); this.hP2.classList.toggle('miss', t > this.L.par[0]); }
-      else { const d = Math.max(0, Math.floor((S.maxX - this.L.lipX) / 60)); this.hTimer.textContent = d + 'm'; this.hP2.textContent = '⏱ ' + t.toFixed(1) + 's'; this.hP3.textContent = '🪙 ' + save.coins;
+      else { const d = Math.max(0, Math.floor((S.maxX - this.L.lipX) / 60)); this.hTimer.textContent = d + 'm'; if (this.hSpeed) { const kmh = Math.round(Math.hypot(S.car.velocity.x, S.car.velocity.y) * 3.6); this.hSpeed.textContent = (S.boosting ? '⚡ ' : '') + kmh + ' km/h'; this.hSpeed.classList.toggle('hot', S.boosting); } this.hP2.textContent = '⏱ ' + t.toFixed(1) + 's'; this.hP3.textContent = '🪙 ' + save.coins;
         if (this.bestFlagX && !this.gotBestDist && S.maxX > this.bestFlagX) { this.gotBestDist = true; this.toast('NEW BEST DISTANCE!'); sfx.best(); this.cameras.main.flash(120, 255, 200, 120); } }
-      const w = !S.started && this.isLaunch ? (TOUCH ? 'Hold RIGHT to go!' : 'Hold ▶ to go!') : S.warn ? (TOUCH ? WARN[S.warn].replace('(↓ / both sides)', '(hold both sides)').replace('◀ or ▶', 'a side').replace('drive ▶ or hop ↓', 'hold RIGHT or both sides to hop').replace('Hold ▶', 'Hold RIGHT') : WARN[S.warn]) : '';
+      const w = !S.started && this.isLaunch ? (TOUCH ? 'Hold ▶ and ⚡ BOOST to go!' : 'Hold ▶ + SHIFT to boost down the ramp!') : S.warn ? (TOUCH ? WARN[S.warn].replace(' (↓)', '') : WARN[S.warn]) : '';
       if (this.hWarn.textContent !== w) { this.hWarn.textContent = w; this.hWarn.classList.toggle('on', !!w); }
     }
     this.hFuel.style.width = Math.max(0, S.fuel / (this.L.fuel || 100) * 100) + '%';
@@ -503,7 +486,7 @@ class Play extends Phaser.Scene {
     requestAnimationFrame(() => overlay?.querySelector('.stamp').classList.add('go'));
   }
   launchResult() {
-    const S = this.sim, L = this.L; this.done = true; setZones(false, false); if (this.hWarn) { this.hWarn.textContent = ''; this.hWarn.classList.remove('on'); }
+    const S = this.sim, L = this.L; this.done = true; setZones(false); if (this.hWarn) { this.hWarn.textContent = ''; this.hWarn.classList.remove('on'); }
     const before = unlockedSkins(), prevStreak = save.streak || 0;
     const p0 = payout(L, S), questOk = !!(this.quest && this.quest.test(S, p0));
     const p = payout(L, S, { quest: questOk ? this.quest.pay : 0, streak: S.parked ? prevStreak : 0 });
@@ -581,5 +564,5 @@ class Play extends Phaser.Scene {
 window.__pp = { LEVELS, save, startLevel, startLaunch, openShop, showMenu, playLaunch: (seed, inputs) => { menuEl?.remove(); menuEl = null; closeShop(); game.scene.getScene('play').scene.restart({ mode: 'launch', seed, replay: inputs }); }, play: (id, inputs) => { menuEl?.remove(); menuEl = null; game.scene.getScene('play').scene.restart({ id, replay: inputs }); } };
 const game = new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, pixelArt: true, backgroundColor: '#12141c',
   scale: { mode: Phaser.Scale.RESIZE }, scene: [Play] });
-buildTouch(); buildZones();
+buildTouch();
 game.events.once('ready', () => { if (location.hash.startsWith('#l')) startLevel(+location.hash.slice(2)); else showMenu(); });

@@ -3,13 +3,15 @@ import Matter from 'matter-js';
 const { Engine, Bodies, Body, Composite, Vertices } = Matter;
 
 const norm = a => Math.atan2(Math.sin(a), Math.cos(a));
+export const GRAV_LA = 0.00085; // launch gravity: a bit floaty for fun, but you clearly fall
+export const LIFT_LA = 0.0013; // launch thrust: ~1.5x gravity, a fuel-limited hop not a hover
 export const CAR_W = 60, CAR_H = 22, DT = 1000 / 60;
 const LIFT = 0.00175, STEER = 0.00055, DRIVE = 0.0018, HOP = 7.2, SPIN = 0.011, MAXSPIN = 0.22;
 
 export function createSim(L) {
   const LA = L.mode === 'launch';
   const T = Object.assign({ lift: 1, spin: 1, grip: 1, top: 9.5, boostPow: 0, boostCap: 0, steer: 1 }, L.tune || {});
-  const engine = Engine.create({ gravity: { x: 0, y: 1, scale: LA ? 0.00082 : 0.001 } }); // floatier in Launch mode: more hang time
+  const engine = Engine.create({ gravity: { x: 0, y: 1, scale: LA ? GRAV_LA : 0.001 } }); // floatier in Launch mode: more hang time
   const world = engine.world;
   const statics = [];
   const add = (r, opts = {}) => {
@@ -75,13 +77,19 @@ export function createSim(L) {
     const fuelRate = (L.fuelRate || 1) * (inp.assist ? 0.65 : 1); // phone scheme is coarser: cheaper thrust
     S.thrusting = { up: false, l: false, r: false };
     // lift (thrusters along car "up")
-    const liftK = LA ? Math.max(0, Math.min(1, (car.velocity.y + 7) / 4)) : 1; // launch: thrust fades when already climbing fast (no moon shots)
-    if (inp.up && S.fuel > 0) { Body.applyForce(car, car.position, { x: ux * LIFT * T.lift * m * liftK, y: uy * LIFT * T.lift * m * liftK });
-      S.fuel -= 0.2 * fuelRate; S.thrusting.up = true; }
+    // thrusters: launch = straight up (true momentum otherwise); puzzles = along the car's up
+    if (inp.up && S.fuel > 0) { Body.applyForce(car, car.position, LA ? { x: 0, y: -LIFT_LA * T.lift * m } : { x: ux * LIFT * T.lift * m, y: uy * LIFT * T.lift * m });
+      S.fuel -= (LA ? 0.45 : 0.2) * fuelRate; S.thrusting.up = true; }
     // fan suction: glued to the ramp surface
     // boost gauge: extra top speed + push on the ground, forward shove in the air
     S.boosting = !!(inp.boost && S.boost > 0);
-    if (S.boosting) { S.boost = Math.max(0, S.boost - 0.6);
+    if (LA) { // launch: the BOOST gauge is a ramp booster, used whenever you hold it on the ramp / ground
+      // fires only on the BOOST input, in the held direction (or the facing direction); wheels must be down
+      S.boosting = S.boosting && S.grounded && car.position.x < L.lipX + 20; // ramp booster only
+      if (S.boosting) { S.boost = Math.max(0, S.boost - 1); const bd = (inp.right ? 1 : 0) - (inp.left ? 1 : 0) || S.facing; S.facing = bd;
+        const sg = bd * (Math.cos(a) > 0 ? 1 : -1), vf = car.velocity.x * fx + car.velocity.y * fy;
+        if (vf * sg < 48) Body.setVelocity(car, { x: car.velocity.x + fx * sg * T.boostAcc, y: car.velocity.y + fy * sg * T.boostAcc }); }
+    } else if (S.boosting) { S.boost = Math.max(0, S.boost - 0.6);
       if (!S.grounded) Body.applyForce(car, car.position, { x: fx * 0.0009 * (1 + T.boostPow / 4) * m * S.facing * (Math.cos(a) > 0 ? 1 : -1), y: fy * 0.0009 * m * S.facing });
       else if (!inp.left && !inp.right) inp = { ...inp, [S.facing > 0 ? 'right' : 'left']: true };
     }
@@ -90,9 +98,11 @@ export function createSim(L) {
     if (dir) {
       if (S.grounded && Math.abs(Math.cos(a)) > 0.6) {
         // wheel traction: accelerate along the car's forward axis toward top speed (no fuel)
-        const sgn = Math.cos(a) > 0 ? 1 : -1, vf = car.velocity.x * fx + car.velocity.y * fy, target = dir * sgn * (LA && car.position.x > L.lipX + 150 ? (T.lotTop || 4.5) : T.top + (S.boosting ? T.boostPow : 0));
-        const acc = vf * Math.sign(target) >= Math.abs(target) ? 0 : Math.sign(target - vf) * Math.min(Math.abs(target - vf), (vf * target < 0 ? 0.9 : 0.42) * T.grip * (S.boosting ? 1.6 : 1));
+        const sgn = Math.cos(a) > 0 ? 1 : -1, vf = car.velocity.x * fx + car.velocity.y * fy, target = dir * sgn * (LA && car.position.x > L.lipX + 150 ? (T.lotTop || 4.5) : T.top + (S.boosting && !LA ? T.boostPow : 0));
+        const acc = vf * Math.sign(target) >= Math.abs(target) ? 0 : Math.sign(target - vf) * Math.min(Math.abs(target - vf), (vf * target < 0 ? 0.9 : 0.42) * T.grip * (S.boosting && !LA ? 1.6 : 1));
         Body.setVelocity(car, { x: car.velocity.x + fx * acc, y: car.velocity.y + fy * acc });
+      } else if (LA) { // launch: light free air-steer (no gauge); real course changes need THRUST
+        Body.applyForce(car, car.position, { x: STEER * 0.45 * T.steer * m * dir, y: 0 });
       } else if (S.fuel > 0) {
         Body.applyForce(car, car.position, { x: STEER * T.steer * m * dir, y: 0 });
         S.fuel -= 0.07 * fuelRate; if (dir > 0) S.thrusting.r = true; else S.thrusting.l = true;
@@ -111,8 +121,7 @@ export function createSim(L) {
     const sd = (inp.spinR ? 1 : 0) - (inp.spinL ? 1 : 0);
     if (sd && S.grounded) Body.setAngularVelocity(car, Math.max(-0.09, Math.min(0.09, car.angularVelocity + 0.012 * sd))); // wheelie / kick-up
     else if (sd && !S.grounded) Body.setAngularVelocity(car, Math.max(-MAXSPIN * T.spin, Math.min(MAXSPIN * T.spin, car.angularVelocity + SPIN * T.spin * sd)));
-    else if (!S.grounded && LA) { // gyro auto-level (launch): settle nose-level when you're not flipping
-      const e = norm(car.angle); Body.setAngularVelocity(car, car.angularVelocity * 0.9 - e * 0.012); }
+    else if (!S.grounded && LA) Body.setAngularVelocity(car, car.angularVelocity * 0.995); // launch: no auto-level, just keeps its spin
     else if (!S.grounded) Body.setAngularVelocity(car, car.angularVelocity * 0.97);
     // self-righting assist when stuck on roof/side
     if (S.grounded && Math.cos(a) < 0.3 && Math.hypot(car.velocity.x, car.velocity.y) < 1.5) {
@@ -173,7 +182,7 @@ export function createSim(L) {
       } else S.glued = false;
     } else S.glued = false;
     if (!S.glued && L.tune && L.tune.drag) car.frictionAir = L.tune.drag;
-    if (wasGlued && !S.glued && car.position.x >= L.lipX - 6 && T.kick) { Body.setVelocity(car, { x: car.velocity.x * T.kick, y: car.velocity.y * T.kick }); S.events.push('kick'); }
+    if (wasGlued && !S.glued && car.position.x >= L.lipX - 6) { S.lipSpeed = Math.hypot(car.velocity.x, car.velocity.y); S.events.push('kick'); } // no auto-kick: lip speed is what you built with BOOST
     // contacts
     let g = false, bump = false, ramp = false, roofCar = false;
     for (const p of engine.pairs.list) {
@@ -295,11 +304,11 @@ export const FAIL_WHY = {
   FLIPPED: 'Stuck upside-down. Tip: land wheels-down, or hold ◀/▶ to rock back over.',
   STALLED: 'You stopped driving. Hold ▶ to keep rolling to a spot.',
   'OUT OF JUICE': 'Ran out of air and boost before reaching a spot.',
-  STUCK: 'Wedged between cars. Hop (↓ / both sides) to get out.',
+  STUCK: 'Wedged between cars. HOP (↓) to get out.',
   'IN THE PIT': 'Dropped into a pothole.',
   'LEFT THE LOT': 'Flew right out of the lot.',
   'METER EXPIRED': 'The parking meter ran out.',
   'SPOT STOLEN': 'The other car got there first.',
 };
-export const WARN = { idle: 'Hold ▶ to keep driving', slow: 'Stuck? Hop off (↓ / both sides)', nojuice: 'Out of juice: roll into the nearest spot!',
-  roof: 'On a car roof: drive ▶ or hop ↓ off it', upside: 'Upside-down! Hold ◀ or ▶ to flip back' };
+export const WARN = { idle: 'Hold ▶ to keep driving', slow: 'Stuck? HOP (↓) off', nojuice: 'Out of juice: roll into the nearest spot!',
+  roof: 'On a car roof: drive ▶ or HOP (↓) off it', upside: 'Upside-down! Hold ◀ or ▶ to rock back' };

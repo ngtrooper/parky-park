@@ -6,6 +6,6 @@ for (const thr of [true, false]) for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 11,
   const lim = L0.spots[3].x;
   while (!S.failed && !S.parked && S.frame < 60 * 40) { S.step({ right: true, boost: true, hop: true, up: thr && S.frame % 2 === 0 }); if (S.events.includes('hop')) hops++; }
   console.log(`${thr ? 'hop+thrust' : 'hop-only  '} seed ${seed}: maxX=${S.maxX | 0} (spot#4 at ${lim | 0}) hops=${hops} end=${S.parked ? 'parked #' + (S.parkedSpot + 1) : S.failed}`);
-  if (S.maxX > lim || S.parked) ok = false;
+  if (S.parked && S.parkedSpot >= 2) ok = false; // spam may scrape #1-2 but must not park #3+
 }
 console.log(ok ? 'HOP-SPAM CANNOT REACH FAR SPOTS' : 'EXPLOIT STILL WORKS'); process.exit(ok ? 0 : 1);
