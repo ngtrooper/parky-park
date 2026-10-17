@@ -32,12 +32,19 @@ for (const P of ['crazygames', 'poki', 'gamedistribution', 'web']) {
   r.hidden = await p.evaluate(() => !document.querySelector('[data-a=dad]') || true);
   if (P === 'crazygames') { await p.evaluate(() => window.__cgSettings({ muteAudio: true })); r.cgMute = await p.evaluate(() => window.__pp.sfx.platformMuted);
     await p.evaluate(() => window.__cgSettings({ muteAudio: false })); r.cgUnmute = !(await p.evaluate(() => window.__pp.sfx.platformMuted)); }
+  if (P !== 'web') { // rewarded 2x coins on the results screen
+    await p.evaluate(() => { window.__oldSim = window.__pp.scene?.sim; return window.__pp.startLaunch(); });
+    await p.waitForFunction(() => window.__pp.scene?.sim && window.__pp.scene.sim !== window.__oldSim && !window.__pp.scene.done && window.__pp.scene.sim.frame > 3, null, { timeout: 20000 });
+    await p.evaluate(() => { const S = window.__pp.scene.sim; S.flipBank = 50; S.fail('STUCK'); }); await p.waitForSelector('[data-a=ad2]', { timeout: 8000 }).catch(async e => { await p.screenshot({ path: 'shots/pt_fail.png' }); console.log('dbg', await p.evaluate(() => ({ adsOn: window.__pp.platform.adsOn(), done: window.__pp.scene.done, failed: window.__pp.scene.sim.failed, ov: document.querySelector('.panel')?.innerText?.slice(0, 200) }))); throw e; });
+    const b0 = await p.evaluate(() => window.__pp.save.coins); await p.click('[data-a=ad2]'); await p.waitForTimeout(1200);
+    r.x2 = [b0, await p.evaluate(() => window.__pp.save.coins)]; }
+  else r.x2web = !(await p.$('[data-a=ad2]'));
   r.errs = errs;
   const has = s => r.log2.includes(s);
-  let ok = !leaks.length && !errs.length && r.coins[1] > r.coins[0];
+  let ok = !leaks.length && !errs.length && r.coins[1] > r.coins[0] && (P === 'web' || r.x2[1] > r.x2[0]);
   if (P === 'crazygames') ok &&= has('init') && has('gameplayStart') && has('ad:rewarded') && has('data.set:parkypark_v1') && has('settingsListener') && r.cgMute && r.cgUnmute && r.mutedDuringAd && r.adsOn;
   if (P === 'poki') ok &&= has('loadingFinished') && has('gameplayStart') && has('gameplayStop') && has('rewardedBreak') && r.mutedDuringAd && r.adsOn;
-  if (P === 'gamedistribution') ok &&= has('showAd:rewarded') && r.mutedDuringAd && r.adsOn;
+  if (P === 'gamedistribution') ok &&= has('showAd:interstitial') && has('showAd:rewarded') && r.mutedDuringAd && r.adsOn;
   if (P === 'web') ok &&= !r.adsOn && /Free daily bonus/.test(r.dailyBtn);
   console.log((ok ? 'PASS ' : 'FAIL ') + JSON.stringify({ ...r, log: undefined, log2: r.log2.slice(0, 300) }));
   allOk &&= ok; await ctx.close(); srv.close();

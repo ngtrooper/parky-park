@@ -13,7 +13,7 @@
     "build:portals": "node tools/build_portals.mjs",
     "build:crazygames": "node tools/build_portals.mjs crazygames",
     "build:poki": "node tools/build_portals.mjs poki",
-    "build:gamedistribution": "node tools/build_portals.mjs gamedistribution"
+    "build:gamedistribution": "VITE_GD_GAME_ID=${VITE_GD_GAME_ID:-f80b379dea094c32949287ccda7b3610} node tools/build_portals.mjs gamedistribution"
   },
   "dependencies": {
     "@capacitor-community/admob": "^7.2.0",

@@ -1,0 +1,20 @@
+SPOT THIEF: GameDistribution Edit form
+
+Title: Spot Thief
+Genre (category): Racing  (alternative if Racing isn't offered: Arcade)
+Tags: car, driving, parking, flying, physics, stunt, flip, rocket, jump, ramp, upgrade, skill, arcade, casual, mobile, boys, 2d
+Target audience / age group: everyone, 8+ (no violence, no chat, no personal data). Mobile-friendly, so also suits teens and casual adults.
+Mobile ready: yes (touch controls; landscape)
+Orientation: landscape
+Width x Height: 1280 x 720
+
+Description:
+The lot is full and every car can fly. Boost down a giant ramp, pilot your car with real thrusters (lift, push, brake, slam down) and flip it in mid-air for bonus pay. Then land and stop in a free spot before a rival steals it! Farther spots pay more coins. Spend them on 7 upgrade lines (boost, air tank, thrusters, boost tank, tires, spin gyro, coin magnet), buy car paints and thruster flame colours, and come back for the Daily Lot. Includes hand-made puzzle levels too.
+
+Instructions:
+Keyboard: Left / Right arrows = drive. W A S D = thrusters (W lift, S slam down, A / D push; hold D on the ramp to boost). Q / E = flip. Down arrow or Space = hop. R = retry, Enter = next run, Esc = menu.
+Touch: left thumb = arrow buttons to drive. Right thumb = 8-way THRUST pad (push it right on the ramp to boost). Flip buttons rotate the car; HOP jumps.
+Goal: watch the landing marker. GREEN means a free spot. Land, stop inside it, and it's yours.
+
+Key game features (max 300 chars):
+Real-momentum flying car physics, 8-way thrusters and mid-air flips. Steal parking spots from rival drivers. 7 upgrade lines with 60+ levels. 13 car paints and 8 flame colours. Daily Lot challenge and puzzle levels. Keyboard and touch controls, auto-saves progress.
