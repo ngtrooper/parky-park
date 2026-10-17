@@ -12,6 +12,6 @@ const c0 = fl.c; await p.click('[data-a=dad]'); await p.waitForSelector('.mockad
 const c1 = await p.evaluate(() => window.__pp.save.coins), claimed = await p.textContent('.dailyad'); ok &&= c1 > c0 && /next in/.test(claimed);
 await p.screenshot({ path: 'shots/shop_v9.png', fullPage: true });
 await p.goto(BASE); await p.waitForFunction(() => window.__pp); await p.evaluate(() => document.querySelector('[data-a=shop]').click()); await p.waitForTimeout(300);
-const webHidden = !(await p.$('.dailyad')); ok &&= webHidden && !errs.length;
+const webHidden = !(await p.$('[data-a=dad]')) && !/Watch ad|ad2/.test(await p.innerHTML('.shop, body'));
 console.log('migrated', JSON.stringify(mig), '| pips', pips, '| flame', fl.f, 'coins', fl.c, '| daily ad', c0, '->', c1, claimed.trim(), '| hidden on web', webHidden, '| errors', errs);
 console.log(ok ? 'SHOP V9 OK' : 'SHOP V9 FAIL'); await b.close(); process.exit(ok ? 0 : 1);

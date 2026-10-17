@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "cap:sync": "npm run build && npx cap sync",
     "android:apk": "npm run cap:sync && cd android && JAVA_HOME=$(ls -d ~/jdk/jdk-21*) ANDROID_HOME=~/android-sdk ./gradlew assembleDebug",
-    "android:aab": "npm run cap:sync && cd android && JAVA_HOME=$(ls -d ~/jdk/jdk-21*) ANDROID_HOME=~/android-sdk ./gradlew bundleRelease"
+    "android:aab": "npm run cap:sync && cd android && JAVA_HOME=$(ls -d ~/jdk/jdk-21*) ANDROID_HOME=~/android-sdk ./gradlew bundleRelease",
+    "build:portals": "node tools/build_portals.mjs",
+    "build:crazygames": "node tools/build_portals.mjs crazygames",
+    "build:poki": "node tools/build_portals.mjs poki",
+    "build:gamedistribution": "node tools/build_portals.mjs gamedistribution"
   },
   "dependencies": {
     "@capacitor-community/admob": "^7.2.0",

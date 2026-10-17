@@ -130,3 +130,4 @@ button.danger{background:#ff8a8a;font-size:14px}
 .touch .tr{padding-right:env(safe-area-inset-right)}
 @media (max-height:500px){.touch .pad{width:140px;height:140px}.touch .pad b{width:52px;height:52px;margin:-26px}}
 .garage .fl i{width:26px}.dailyad{margin:8px 0;text-align:center}
+.holdmsg{position:absolute;top:42%;left:0;right:0;text-align:center;font-size:44px;font-weight:900;color:#fff;text-shadow:3px 3px 0 #000;pointer-events:none}

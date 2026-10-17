@@ -4,12 +4,28 @@ import { createSim, starsFor, DT, CAR_W, CAR_H, FAIL_WHY, WARN, GRAV_LA } from '
 import { makeArt, SKIES } from './art.js';
 import { sfx } from './sfx.js';
 import { genLot, dailySeed, UPGRADES, costOf, payout, flipMult, UPGRADE_VER, progressOf } from './launch.js';
-import { showRewarded, onRunStart, isNative, adsOn } from './ads.js';
+import { isNative } from './ads.js';
+import { platform } from './platform/index.js';
+// ---------- platform (web / crazygames / poki / gamedistribution) ----------
+let adHold = false, blurHold = false;
+const holdOn = () => adHold || blurHold;
+await platform.init({ pause() { adHold = true; sfx.setAdMute(true); }, resume() { adHold = false; sfx.setAdMute(false); } });
+const store = platform.storage;
+const adsOn = () => platform.adsOn();
+const showRewarded = async cb => { const ok = await platform.rewarded(); if (ok) cb?.(); return ok; };
+const onRunStart = () => platform.onRunStart();
+// pause on tab hide / window blur (and mute); resume when back
+const setBlur = on => { blurHold = on; sfx.setAdMute(on || adHold); };
+document.addEventListener('visibilitychange', () => setBlur(document.hidden));
+addEventListener('blur', () => setBlur(true)); addEventListener('focus', () => setBlur(false));
+// portals embed us in scrolling pages: never let keys or the wheel scroll the page
+addEventListener('keydown', e => { if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault(); });
+addEventListener('wheel', e => e.preventDefault(), { passive: false });
 
 // ---------- save ----------
 const SAVE_KEY = "parkypark_v1";
 const save = Object.assign({ stars: {}, best: {}, slips: 0, coins: 0, up: {}, runs: 0, bestSpot: 0, daily: {}, bestDist: 0, streak: 0, bestStreak: 0,
-  stats: { parks: 0, steals: 0, triple: 0, dailies: 0 }, skin: 'white' }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'));
+  stats: { parks: 0, steals: 0, triple: 0, dailies: 0 }, skin: 'white' }, JSON.parse(store.getItem(SAVE_KEY) || '{}'));
 if (save.econ !== 2) { // v2 economy: old saves were inflated by the flip exploit; keep upgrades, trim coins
   save.coins = Math.min(save.coins, 150); save.econ = 2; }
 if (save.upVer !== UPGRADE_VER) { for (const k in save.up) save.up[k] = (save.up[k] || 0) * 3; save.upVer = UPGRADE_VER; } // 3x levels: old level n -> 3n
@@ -43,6 +59,7 @@ const flameTint = () => { const f = FLAMES.find(x => x.k === save.flame) || FLAM
 // ---------- daily ad gift (native / ?mockads only) ----------
 const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 const dailyGift = () => 40 + Math.round(360 * progressOf(save.up)); // scales with upgrade progress
+const freeGift = () => Math.round(dailyGift() * 0.5); // no-ads platforms: a free daily bonus instead (smaller, no ad)
 const untilMidnight = () => { const d = new Date(), m = new Date(d); m.setHours(24, 0, 0, 0); const s = Math.max(0, (m - d) / 1000 | 0); return `${s / 3600 | 0}h ${String((s / 60 | 0) % 60).padStart(2, '0')}m`; };
 const skinTint = () => (SKINS.find(k => k.k === save.skin && k.ok()) || SKINS[0]).tint;
 const unlockedSkins = () => SKINS.filter(k => k.ok()).map(k => k.k);
@@ -59,7 +76,8 @@ function pickQuest() {
   ];
   return Q[Math.floor(Math.random() * Q.length)];
 }
-const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+const persist = () => store.setItem(SAVE_KEY, JSON.stringify(save));
+sfx.setMuted(!!save.muted);
 const ghostKey = id => 'parkypark_ghost_' + id;
 
 // ---------- input ----------
@@ -129,6 +147,7 @@ function buildTouch() {
 }
 
 function showMenu() {
+  platform.gameplayStop();
   const sc = game.scene.getScene('play'); if (sc) sc.paused = true;
   menuEl?.remove(); overlay?.remove(); hud && (hud.style.display = 'none');
   const total = Object.values(save.stars).reduce((a, b) => a + b, 0);
@@ -161,6 +180,7 @@ async function startLaunch(daily = false, seed = null) {
   game.scene.getScene('play').scene.restart({ mode: 'launch', daily, seed: seed ?? (daily ? dailySeed() : Math.floor(Math.random() * 1e9)) });
 }
 function openShop(after) {
+  platform.gameplayStop();
   closeShop(); overlay?.remove(); hud && (hud.style.display = 'none');
   const sc = game.scene.getScene('play'); if (sc) sc.paused = true;
   const draw = () => {
@@ -173,7 +193,8 @@ function openShop(after) {
         <i style="background:#${k.tint.toString(16).padStart(6, '0')}"></i>${k.ok() ? k.name : '🔒 ' + k.req}</button>`).join('')}</div>
       <div class="garage flames"><b>FLAMES</b>${FLAMES.map(f => { const own = save.flames.includes(f.k), sw = f.t ? `background:linear-gradient(90deg,${f.t.map(c => '#' + c.toString(16).padStart(6, '0')).join(',')})` : 'background:linear-gradient(90deg,red,orange,yellow,lime,cyan,blue,magenta)';
         return `<button class="sk fl ${save.flame === f.k ? 'sel' : ''}" data-f="${f.k}" ${!own && save.coins < f.price ? 'disabled' : ''}><i style="${sw}"></i>${f.name}${own ? '' : ' 🪙 ' + f.price}</button>`; }).join('')}</div>
-      ${adsOn() ? `<div class="dailyad">${save.dailyAd === localDay() ? `<button disabled>🎁 Daily gift claimed · next in ${untilMidnight()}</button>` : `<button class="main" data-a="dad">🎁 Watch ad: +${dailyGift()} coins (daily)</button>`}</div>` : ''}
+      <div class="dailyad">${save.dailyAd === localDay() ? `<button disabled>🎁 Daily ${adsOn() ? 'gift' : 'bonus'} claimed · next in ${untilMidnight()}</button>`
+        : adsOn() ? `<button class="main" data-a="dad">📺 Watch ad: +${dailyGift()} coins (daily)</button>` : `<button class="main" data-a="dfree">🎁 Free daily bonus: +${freeGift()} coins</button>`}</div>
       <div class="btns"><button class="main" data-a="go">▶ Run again (Enter)</button><button data-a="menu">Menu</button><button class="danger" data-a="reset">⟲ Reset progress</button></div>`;
     shopEl.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
       const u = UPGRADES.find(x => x.k === b.dataset.k), l = save.up[u.k] || 0, c = costOf(u, l);
@@ -181,10 +202,12 @@ function openShop(after) {
     });
     const rb = shopEl.querySelector('[data-a=reset]');
     rb.onclick = () => { if (!rb.dataset.armed) { rb.dataset.armed = 1; rb.textContent = '⚠ Tap again: erase ALL coins, upgrades, stars & skins'; setTimeout(() => { if (rb.isConnected) { delete rb.dataset.armed; rb.textContent = '⟲ Reset progress'; } }, 4000); return; }
-      Object.keys(localStorage).filter(k => k.startsWith('parkypark')).forEach(k => localStorage.removeItem(k)); location.reload(); };
+      Promise.resolve(store.clearPrefix('parkypark')).then(() => location.reload()); };
     shopEl.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { const f = FLAMES.find(x => x.k === b.dataset.f);
       if (!save.flames.includes(f.k)) { if (save.coins < f.price) return; save.coins -= f.price; save.flames.push(f.k); sfx.buy(); } else sfx.click();
       save.flame = f.k; persist(); draw(); });
+    const dfree = shopEl.querySelector('[data-a=dfree]');
+    if (dfree) dfree.onclick = () => { if (save.dailyAd === localDay()) return; save.coins += freeGift(); save.dailyAd = localDay(); persist(); sfx.buy(); draw(); };
     const dad = shopEl.querySelector('[data-a=dad]');
     if (dad) dad.onclick = () => { dad.disabled = true; showRewarded(() => { if (save.dailyAd === localDay()) return; const g = dailyGift(); save.coins += g; save.dailyAd = localDay(); persist(); sfx.buy(); draw(); }).finally?.(() => shopEl?.isConnected && draw()); };
     shopEl.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { save.skin = b.dataset.s; persist(); sfx.click(); draw(); });
@@ -251,7 +274,7 @@ class Play extends Phaser.Scene {
     this.predG = this.add.graphics().setDepth(6);
     this.quest = this.isLaunch ? pickQuest() : null; this.gotBestDist = false;
     // ghost
-    this.ghostData = this.isLaunch ? null : JSON.parse(localStorage.getItem(ghostKey(L.id)) || 'null');
+    this.ghostData = this.isLaunch ? null : JSON.parse(store.getItem(ghostKey(L.id)) || 'null');
     this.ghost = this.add.image(0, 0, 'car').setScale(2).setAlpha(0.35).setTintFill(0x9fd8ff).setVisible(!!this.ghostData).setDepth(4);
     // car
     this.carImg = this.add.image(L.start.x, L.start.y, 'car').setScale(2).setDepth(5).setTint(this.isLaunch ? skinTint() : 0xffffff);
@@ -278,7 +301,8 @@ class Play extends Phaser.Scene {
     window.__pp.scene = this;
     setZones(true);
     this.uiScale();
-    if (this.isLaunch && !save.tut && !this.replay) { this.paused = true; showTutorial(() => { this.paused = false; }); }
+    if (this.isLaunch && !save.tut && !this.replay) { this.paused = true; platform.gameplayStop(); showTutorial(() => { this.paused = false; platform.gameplayStart(); }); }
+    else platform.gameplayStart();
     this.applyZoom = () => { const W = this.scale.width, H = this.scale.height; this.cameras.main.setSize(W, H); const f = W < H ? Math.max((W / 960) * 1.35, H / (L.h + 380) / (this.isLaunch ? 0.62 : 0.8)) : Math.min(W / 960, H / 540);
       this.baseZoom = (this.isLaunch ? 0.62 : Phaser.Math.Clamp(540 / (L.h * 0.92), 0.6, 1)) * f; this.cameras.main.setZoom(this.baseZoom); this.uiScale(); };
     this.applyZoom(); this.scale.on('resize', this.applyZoom); this.events.once('shutdown', () => this.scale.off('resize', this.applyZoom));
@@ -341,9 +365,10 @@ class Play extends Phaser.Scene {
       <div class="pars"><span class="bestline">${LA ? `best spot #${save.bestSpot} · farthest ${save.bestDist}m` : save.best[L.id] ? 'BEST ' + fmt(save.best[L.id]) : 'no best yet'}</span></div>
       ${LA && save.streak ? `<div class="streak">🔥 ${save.streak} park streak · +${Math.min(5, save.streak) * 10}%</div>` : ''}</div></div>
       <div class="warn"></div>${LA ? '<div class="spotarrow"></div>' : ''}
-      <div class="topbtns p"><button data-a="r">↻ R</button><button data-a="m">☰</button></div></div>`);
+      <div class="topbtns p"><button data-a="snd">${save.muted ? '🔇' : '🔊'}</button><button data-a="r">↻ R</button><button data-a="m">☰</button></div></div>`);
     hud.querySelector('[data-a=r]').onclick = () => this.restartLevel();
     hud.querySelector('[data-a=m]').onclick = () => showMenu();
+    hud.querySelector('[data-a=snd]').onclick = e => { save.muted = !save.muted; sfx.setMuted(save.muted); persist(); e.currentTarget.textContent = save.muted ? '🔇' : '🔊'; e.currentTarget.blur(); };
     ui.insertBefore(hud, ui.firstChild);
     this.hTimer = hud.querySelector('.timer'); this.hFuel = hud.querySelector('.fuel i'); this.hBoost = hud.querySelector('.boost i'); this.hStyle = hud.querySelector('.style');
     this.hP2 = hud.querySelector('.p2'); this.hP3 = hud.querySelector('.p3'); this.hWarn = hud.querySelector('.warn'); this.hArrow = hud.querySelector('.spotarrow'); this.hSpeed = hud.querySelector('.speedo');
@@ -359,6 +384,8 @@ class Play extends Phaser.Scene {
   toast(txt) { const t = h(`<div class="toast">${txt}</div>`); ui.appendChild(t); setTimeout(() => t.remove(), 1000); }
   update(time, delta) {
     if (this.paused) return;
+    if (holdOn()) { this.acc = 0; this.holdEl ??= (() => { const e = h('<div class="holdmsg p">⏸ PAUSED</div>'); ui.appendChild(e); return e; })(); return; }
+    if (this.holdEl) { this.holdEl.remove(); this.holdEl = null; }
     const S = this.sim;
     this.acc += Math.min(delta, 100);
     let steps = 0;
@@ -513,10 +540,10 @@ class Play extends Phaser.Scene {
   }
   onParked() {
     if (this.isLaunch) return this.launchResult();
-    const S = this.sim, L = this.L, t = S.time(); this.done = true;
+    const S = this.sim, L = this.L, t = S.time(); this.done = true; platform.gameplayStop();
     const stars = starsFor(L, t), prevBest = save.best[L.id];
     const newBest = !prevBest || t < prevBest;
-    if (newBest) { save.best[L.id] = t; localStorage.setItem(ghostKey(L.id), JSON.stringify(this.ghostRec)); }
+    if (newBest) { save.best[L.id] = t; store.setItem(ghostKey(L.id), JSON.stringify(this.ghostRec)); }
     save.stars[L.id] = Math.max(save.stars[L.id] || 0, stars); persist(); this.refreshHud();
     this.cameras.main.shake(260, 0.012); this.cameras.main.flash(120, 255, 255, 255);
     this.sparks.emitParticleAt(S.car.position.x, S.car.position.y - 10, 60);
@@ -532,7 +559,7 @@ class Play extends Phaser.Scene {
     requestAnimationFrame(() => overlay?.querySelector('.stamp').classList.add('go'));
   }
   launchResult() {
-    const S = this.sim, L = this.L; this.done = true; setZones(false); if (this.hWarn) { this.hWarn.textContent = ''; this.hWarn.classList.remove('on'); }
+    const S = this.sim, L = this.L; this.done = true; platform.gameplayStop(); setZones(false); if (this.hWarn) { this.hWarn.textContent = ''; this.hWarn.classList.remove('on'); }
     const before = unlockedSkins(), prevStreak = save.streak || 0;
     const p0 = payout(L, S), questOk = !!(this.quest && this.quest.test(S, p0));
     const p = payout(L, S, { quest: questOk ? this.quest.pay : 0, streak: S.parked ? prevStreak : 0 });
@@ -541,6 +568,7 @@ class Play extends Phaser.Scene {
     const newDist = p.dist > (save.bestDist || 0); if (newDist) save.bestDist = p.dist;
     const newSpot = S.parked && S.parkedSpot + 1 > save.bestSpot;
     if (S.parked) { save.bestSpot = Math.max(save.bestSpot, S.parkedSpot + 1); save.stats.parks++; }
+    if (newSpot && save.bestSpot >= 3) platform.happytime(); // celebrate new farthest spot
     if (L.daily) { save.daily[L.seed] = Math.max(save.daily[L.seed] || 0, p.total); save.stats.dailies++; }
     persist(); this.refreshHud(); this.predG.clear(); this.hArrow && (this.hArrow.className = 'spotarrow');
     const newSkins = unlockedSkins().filter(k => !before.includes(k));
@@ -591,7 +619,7 @@ class Play extends Phaser.Scene {
   }
   onFail() {
     if (this.isLaunch) return this.launchResult();
-    const S = this.sim; this.done = true;
+    const S = this.sim; this.done = true; platform.gameplayStop();
     save.slips++; persist();
     const y0 = 2028 + Math.floor((save.slips - 1) / 2), q = ((save.slips - 1) % 4) + 1;
     const from = save.slips > 1 ? `Q${((save.slips - 2) % 4) + 1} ${2028 + Math.floor((save.slips - 2) / 2)}` : 'Q4 2027';
@@ -607,8 +635,8 @@ class Play extends Phaser.Scene {
   }
 }
 
-window.__pp = { LEVELS, save, startLevel, startLaunch, openShop, showMenu, playLaunch: (seed, inputs) => { menuEl?.remove(); menuEl = null; closeShop(); game.scene.getScene('play').scene.restart({ mode: 'launch', seed, replay: inputs }); }, play: (id, inputs) => { menuEl?.remove(); menuEl = null; game.scene.getScene('play').scene.restart({ id, replay: inputs }); } };
-const game = new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, pixelArt: true, backgroundColor: '#12141c',
+window.__pp = { platform, sfx, LEVELS, save, startLevel, startLaunch, openShop, showMenu, playLaunch: (seed, inputs) => { menuEl?.remove(); menuEl = null; closeShop(); game.scene.getScene('play').scene.restart({ mode: 'launch', seed, replay: inputs }); }, play: (id, inputs) => { menuEl?.remove(); menuEl = null; game.scene.getScene('play').scene.restart({ id, replay: inputs }); } };
+const game = new Phaser.Game({ type: Phaser.AUTO, banner: false, parent: 'game', width: 960, height: 540, pixelArt: true, backgroundColor: '#12141c',
   scale: { mode: Phaser.Scale.RESIZE }, scene: [Play] });
 buildTouch();
-game.events.once('ready', () => { if (location.hash.startsWith('#l')) startLevel(+location.hash.slice(2)); else showMenu(); });
+game.events.once('ready', () => { document.getElementById('loading')?.remove(); platform.loadingDone(); if (location.hash.startsWith('#l')) startLevel(+location.hash.slice(2)); else showMenu(); });
